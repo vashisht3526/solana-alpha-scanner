@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Alpha Scanner — Smart Wallet Intelligence</title>
+    <meta name="description" content="Scan and analyze highly profitable Solana wallets. Filter out developer insiders, HFT bots, and manipulation traps. Paper trade to test strategies.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css?v=7">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <!-- Header -->
+    <header id="app-header">
+        <div class="header-inner">
+            <div class="logo-group">
+                <div class="logo-icon">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <defs>
+                            <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32">
+                                <stop offset="0%" stop-color="#9945FF"/>
+                                <stop offset="50%" stop-color="#14F195"/>
+                                <stop offset="100%" stop-color="#00D1FF"/>
+                            </linearGradient>
+                        </defs>
+                        <circle cx="16" cy="16" r="14" stroke="url(#logo-grad)" stroke-width="2.5" fill="none"/>
+                        <path d="M10 20.5L14.5 11L19 17L22 13" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="22" cy="13" r="2" fill="#14F195"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="logo-text">Solana Alpha Scanner</h1>
+                    <p class="logo-sub">Smart Wallet Intelligence + Paper Trading</p>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-chip">
+                    <span class="stat-dot live"></span>
+                    <span id="network-status">Mainnet</span>
+                </div>
+                <div class="stat-chip">
+                    <span class="stat-label">Scanned</span>
+                    <span class="stat-value" id="total-scanned">0</span>
+                </div>
+                <div class="stat-chip">
+                    <span class="stat-label">Filtered</span>
+                    <span class="stat-value" id="total-filtered">0</span>
+                </div>
+                <div class="stat-chip" id="paper-balance-chip" style="display:none;">
+                    <span class="stat-label">Paper $</span>
+                    <span class="stat-value" id="header-paper-balance">100.00</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="app-main">
+        <!-- Control Panel -->
+        <section class="control-panel" id="control-panel">
+            <div class="panel-header">
+                <h2 class="section-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M9 2L2 7V18H7V12H11V18H18V7L9 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Scanner Configuration
+                </h2>
+                <span class="badge">Consistency-First Filters</span>
+            </div>
+
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label class="control-label">Data Source</label>
+                    <select id="data-source" class="control-select">
+                        <option value="dexscreener">DexScreener + GMGN (Auto-Discovery)</option>
+                        <option value="manual">Manual Wallet Input</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Min Wallet Age (days)</label>
+                    <div class="range-group">
+                        <input type="range" id="min-wallet-age" class="control-range" min="0" max="365" value="7" step="1">
+                        <span class="range-value" id="min-wallet-age-value">7d</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Min Win Rate (%)</label>
+                    <div class="range-group">
+                        <input type="range" id="min-win-rate" class="control-range" min="10" max="95" value="40" step="5">
+                        <span class="range-value" id="min-win-rate-value">40%</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Max Win Rate (% — filter bots)</label>
+                    <div class="range-group">
+                        <input type="range" id="max-win-rate" class="control-range" min="50" max="100" value="95" step="5">
+                        <span class="range-value" id="max-win-rate-value">95%</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Min Trades</label>
+                    <div class="range-group">
+                        <input type="range" id="min-trades" class="control-range" min="0" max="200" value="1" step="1">
+                        <span class="range-value" id="min-trades-value">1</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Min Total PnL (SOL)</label>
+                    <div class="range-group">
+                        <input type="range" id="min-pnl" class="control-range" min="0" max="500" value="0" step="1">
+                        <span class="range-value" id="min-pnl-value">0 SOL</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Min Unique Tokens Traded</label>
+                    <div class="range-group">
+                        <input type="range" id="min-unique-tokens" class="control-range" min="1" max="50" value="3" step="1">
+                        <span class="range-value" id="min-unique-tokens-value">3</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Min Profitable Days</label>
+                    <div class="range-group">
+                        <input type="range" id="min-profit-days" class="control-range" min="0" max="60" value="1" step="1">
+                        <span class="range-value" id="min-profit-days-value">1</span>
+                    </div>
+                </div>
+                <div class="control-group control-full" id="manual-input-group" style="display:none;">
+                    <label class="control-label">Wallet Addresses (one per line)</label>
+                    <textarea id="manual-wallets" class="control-textarea" placeholder="Enter Solana wallet addresses, one per line...&#10;AstaWuJuQiAS3AfqmM3xZxrJhkkZNXtW4VyaGQfqV6JL&#10;FUCKNiggAS8VdjcGbpAgoPZtfmpA32Q5CGbVbxHeuAgt"></textarea>
+                </div>
+            </div>
+
+            <!-- Developer Filter Toggles -->
+            <div class="filter-toggles">
+                <h3 class="filter-title">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M15.75 2.25H2.25L7.5 8.595V13.5L10.5 15V8.595L15.75 2.25Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Developer, Bot &amp; Manipulation Filters
+                </h3>
+                <div class="toggles-grid">
+                    <label class="toggle-item" id="toggle-new-wallets">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Block newly created wallets</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-same-block">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Flag same-block snipers</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-cluster">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Detect wallet clusters</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-100-winrate">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Filter 100% win rate bots</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-single-token">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Filter single-token wallets</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-pump-dump">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Detect pump &amp; dump patterns</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-one-hit">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Filter one-hit wonders (&gt;80% PnL from 1 token)</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-low-diversity">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Require multi-token diversity (&ge;10 tokens)</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-hft-bots">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">🤖 Filter HFT bots (&gt;20 txs/min)</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-copy-traps">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">🪤 Detect copy-trade traps &amp; honeypots</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-wallet-dispersion">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">🕸️ Flag wallet dispersion clusters</span>
+                    </label>
+                    <label class="toggle-item" id="toggle-mev-risk">
+                        <input type="checkbox" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">⚡ MEV/Frontrunning vulnerability check</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button id="btn-scan" class="btn btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.8"/><path d="M12.5 12.5L16 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    Start Scanning
+                </button>
+                <button id="btn-export" class="btn btn-ghost" disabled>
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 12V15H15V12M9 3V11M9 11L5.5 7.5M9 11L12.5 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Export CSV
+                </button>
+                <button id="btn-backup-db" class="btn btn-ghost" title="Backup all scanner database tables, trades, and logs">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Backup Data
+                </button>
+                <button id="btn-restore-db" class="btn btn-ghost" title="Restore scanner database from a backup JSON file">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Restore Data
+                </button>
+                <input type="file" id="file-restore-db" accept=".json" style="display:none;" />
+            </div>
+        </section>
+
+        <!-- Progress Section -->
+        <section class="progress-section" id="progress-section" style="display:none;">
+            <div class="progress-header">
+                <span class="progress-label" id="progress-label">Initializing scanner...</span>
+                <span class="progress-pct" id="progress-pct">0%</span>
+            </div>
+            <div class="progress-bar-track">
+                <div class="progress-bar-fill" id="progress-bar-fill"></div>
+            </div>
+            <div class="progress-log" id="progress-log"></div>
+        </section>
+
+        <!-- Results Dashboard -->
+        <section class="results-section" id="results-section" style="display:none;">
+            <!-- Summary Cards -->
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-icon green">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>
+                    </div>
+                    <div class="summary-data">
+                        <span class="summary-value" id="alpha-count">0</span>
+                        <span class="summary-label">Alpha Wallets Found</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon red">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="1.8" fill="none"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="1.8"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="1.8"/></svg>
+                    </div>
+                    <div class="summary-data">
+                        <span class="summary-value" id="dev-filtered-count">0</span>
+                        <span class="summary-label">Bots/Devs Filtered</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="summary-data">
+                        <span class="summary-value" id="total-pnl-found">0 SOL</span>
+                        <span class="summary-label">Total PnL Tracked</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon purple">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="summary-data">
+                        <span class="summary-value" id="avg-wallet-age">0d</span>
+                        <span class="summary-label">Avg Wallet Age</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon" style="background:rgba(25,251,251,0.1);color:#19FBFB;border:1px solid rgba(25,251,251,0.15);">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 20V10M8 20V4M12 20v-8M16 20V8M20 20v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="summary-data">
+                        <span class="summary-value" id="avg-consistency">&mdash;</span>
+                        <span class="summary-label">Avg Consistency</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h2 class="section-title">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="7" x2="18" y2="7" stroke="currentColor" stroke-width="1.5"/><line x1="7" y1="7" x2="7" y2="18" stroke="currentColor" stroke-width="1.5"/></svg>
+                        Alpha Wallet Leaderboard
+                    </h2>
+                    <div class="table-controls">
+                        <select id="sort-by" class="control-select compact">
+                            <option value="consistency">Sort by Consistency</option>
+                            <option value="score">Sort by Alpha Score</option>
+                            <option value="pnl">Sort by PnL</option>
+                            <option value="risk">Sort by Risk (safest first)</option>
+                            <option value="tokens">Sort by Token Diversity</option>
+                            <option value="winrate">Sort by Win Rate</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="results-table">
+                        <thead>
+                            <tr>
+                                <th class="th-rank">#</th>
+                                <th class="th-wallet">Wallet</th>
+                                <th class="th-age">Age</th>
+                                <th class="th-pnl">PnL</th>
+                                <th>WR%</th>
+                                <th>Tokens</th>
+                                <th>Consistency</th>
+                                <th>Risk</th>
+                                <th class="th-score">Score</th>
+                                <th class="th-flags">Flags</th>
+                                <th class="th-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="no-results" class="no-results" style="display:none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" opacity="0.3"/><path d="M8 15s1.5-2 4-2 4 2 4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
+                    <p>No wallets matched your filters. Try adjusting the criteria.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================== -->
+        <!-- PAPER TRADING DASHBOARD        -->
+        <!-- ============================== -->
+        <section class="paper-trading-section" id="paper-section" style="display:none;">
+            <div class="panel-header" style="margin-bottom:20px;">
+                <h2 class="section-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M2 10h3l2-5 3 10 2-7h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Paper Trading — Demo Copy-Trade Engine
+                </h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span class="badge" style="background:rgba(20,241,149,0.12);color:#14F195;border-color:rgba(20,241,149,0.2);">SIMULATED — NO REAL MONEY</span>
+                </div>
+            </div>
+
+            <!-- Portfolio Cards -->
+            <div class="paper-portfolio-cards">
+                <div class="paper-card">
+                    <div class="paper-card-label">Portfolio Value</div>
+                    <div class="paper-card-value" id="pt-total-value">100.00 SOL</div>
+                </div>
+                <div class="paper-card">
+                    <div class="paper-card-label">Available Balance</div>
+                    <div class="paper-card-value" id="pt-balance">100.00 SOL</div>
+                </div>
+                <div class="paper-card">
+                    <div class="paper-card-label">Open P&amp;L</div>
+                    <div class="paper-card-value" id="pt-open-pnl">0.00 SOL</div>
+                </div>
+                <div class="paper-card">
+                    <div class="paper-card-label">Realized P&amp;L</div>
+                    <div class="paper-card-value" id="pt-realized-pnl">0.00 SOL</div>
+                </div>
+                <div class="paper-card">
+                    <div class="paper-card-label">Total Return</div>
+                    <div class="paper-card-value" id="pt-total-return">0.00%</div>
+                </div>
+                <div class="paper-card">
+                    <div class="paper-card-label">Win Rate</div>
+                    <div class="paper-card-value" id="pt-win-rate">—</div>
+                </div>
+                <div class="paper-card">
+                    <div class="paper-card-label">Trades</div>
+                    <div class="paper-card-value" id="pt-trades">0</div>
+                </div>
+                <div class="paper-card risk-card">
+                    <div class="paper-card-label">Risk Exposure</div>
+                    <div class="paper-card-value" id="pt-risk">0%</div>
+                    <div class="risk-bar-track">
+                        <div class="risk-bar-fill" id="pt-risk-bar" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Copy Trade Controls -->
+            <div class="paper-controls">
+                <button id="btn-start-copy" class="btn btn-primary" disabled>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polygon points="4,2 14,8 4,14" fill="currentColor"/></svg>
+                    Start Copy Trading
+                </button>
+                <button id="btn-stop-copy" class="btn btn-ghost" disabled>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="1" fill="currentColor"/></svg>
+                    Stop
+                </button>
+                <button id="btn-pause-copy" class="btn btn-ghost" disabled>⏸ Pause</button>
+                <button id="btn-reset-portfolio" class="btn btn-ghost">↺ Reset</button>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+                    <label class="control-label" style="margin:0;font-size:0.72rem;">Starting Balance:</label>
+                    <input type="number" id="pt-start-balance" class="control-select compact" style="width:80px;padding:6px 8px;text-align:right;" value="100" min="1" max="10000" step="10">
+                    <span style="color:var(--text-muted);font-size:0.8rem;">SOL</span>
+                </div>
+            </div>
+
+            <!-- Risk Management Settings -->
+            <details class="risk-settings-details">
+                <summary class="risk-settings-summary">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3M8 10h.01" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                    Risk Management Settings
+                </summary>
+                <div class="risk-settings-grid">
+                    <div class="control-group">
+                        <label class="control-label">Max Position (%)</label>
+                        <input type="number" id="rm-max-position" class="control-select compact" value="5" min="1" max="25" step="1" style="width:100%;">
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Stop Loss (%)</label>
+                        <input type="number" id="rm-stop-loss" class="control-select compact" value="-15" min="-50" max="-1" step="1" style="width:100%;">
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Take Profit (%)</label>
+                        <input type="number" id="rm-take-profit" class="control-select compact" value="50" min="5" max="500" step="5" style="width:100%;">
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Max Daily Loss (%)</label>
+                        <input type="number" id="rm-max-daily" class="control-select compact" value="-10" min="-50" max="-1" step="1" style="width:100%;">
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Max Open Positions</label>
+                        <input type="number" id="rm-max-positions" class="control-select compact" value="10" min="1" max="20" step="1" style="width:100%;">
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Cooldown (seconds)</label>
+                        <input type="number" id="rm-cooldown" class="control-select compact" value="30" min="5" max="300" step="5" style="width:100%;">
+                    </div>
+                </div>
+            </details>
+
+            <!-- Active Positions -->
+            <div class="paper-positions-wrap">
+                <h3 class="sub-title">Active Positions <span id="pt-pos-count" class="badge">0</span></h3>
+                <div class="table-wrap">
+                    <table class="paper-table" id="positions-table">
+                        <thead><tr>
+                            <th>Token</th><th>Entry</th><th>Current</th><th>Size</th><th>P&amp;L</th><th>P&amp;L %</th><th>SL</th><th>TP</th><th>Risk</th><th>Action</th>
+                        </tr></thead>
+                        <tbody id="positions-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="no-positions" class="no-results" style="padding:20px;"><p style="font-size:0.8rem;">No open positions. Start copy trading to follow alpha wallets.</p></div>
+            </div>
+
+            <!-- Trade Log -->
+            <div class="paper-log-wrap">
+                <h3 class="sub-title">Trade Log</h3>
+                <div class="paper-log" id="paper-log">
+                    <div class="log-entry info"><span class="log-time">[--:--:--]</span> Ready. Scan for wallets first, then start copy trading.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════ SNIPER ENGINE DASHBOARD ═══════════ -->
+        <section class="sniper-section" id="sniper-section">
+            <div class="panel-header">
+                <h2 class="section-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="1" fill="currentColor"/><line x1="10" y1="1" x2="10" y2="4" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="16" x2="10" y2="19" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="10" x2="4" y2="10" stroke="currentColor" stroke-width="1.5"/><line x1="16" y1="10" x2="19" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
+                    Sniper Engine — Token Creation → 1000x Detection
+                </h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span class="badge" id="sniper-status-badge" style="background:rgba(255,59,48,0.12);color:#FF3B30;border-color:rgba(255,59,48,0.2);">OFFLINE</span>
+                </div>
+            </div>
+            <p class="section-desc">Monitors DexScreener for newly launched Solana tokens and scores them 0-100 based on 10 weighted signals: volume velocity, buy/sell ratio, liquidity depth, holder distribution, smart money presence, and more. Click any token card for full details, BubbleMaps, chart, and wallet analysis.</p>
+
+            <!-- Sniper Stats -->
+            <div class="sniper-stats-bar">
+                <div class="sniper-stat">
+                    <span class="stat-label">Tracked</span>
+                    <span class="stat-value accent" id="sniper-tracked">0</span>
+                </div>
+                <div class="sniper-stat">
+                    <span class="stat-label">Scanned</span>
+                    <span class="stat-value" id="sniper-scanned">0</span>
+                </div>
+                <div class="sniper-stat">
+                    <span class="stat-label">🔥 Alerts</span>
+                    <span class="stat-value warning" id="sniper-alerts-count">0</span>
+                </div>
+                <div class="sniper-stat">
+                    <span class="stat-label">⚡ A+ Tokens</span>
+                    <span class="stat-value success" id="sniper-hot">0</span>
+                </div>
+                <div class="sniper-stat">
+                    <span class="stat-label">Last Scan</span>
+                    <span class="stat-value" id="sniper-last-scan">—</span>
+                </div>
+            </div>
+
+            <!-- Sniper Controls -->
+            <div class="sniper-controls">
+                <button id="btn-sniper-start" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+                    Start Sniper
+                </button>
+                <button id="btn-sniper-stop" class="btn btn-ghost" disabled>⏹ Stop</button>
+                <button id="btn-sniper-reset" class="btn btn-ghost">↺ Reset</button>
+                <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+                    <select id="sniper-sort-by" class="control-select compact" style="width:130px;padding:6px 10px;font-size:0.75rem;">
+                        <option value="score">🔥 Sort by Score</option>
+                        <option value="age">🕒 Sort by Newest</option>
+                    </select>
+                    <input type="text" id="sniper-manual-input" class="control-select compact" placeholder="Paste token address to snipe..." style="width:300px;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:0.7rem;">
+                    <button id="btn-sniper-manual" class="btn btn-sm btn-accent">🎯 Snipe</button>
+                </div>
+            </div>
+
+            <!-- Sniper Token Cards -->
+            <div class="sniper-tokens-grid" id="sniper-tokens-grid">
+                <div class="sniper-placeholder">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" opacity="0.3"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>
+                    <p>Start the Sniper Engine to detect new token opportunities</p>
+                    <p style="font-size:0.7rem;opacity:0.5;">Monitors DexScreener for new launches • Scores tokens on 10 signals • Alerts on 1000x potential</p>
+                </div>
+            </div>
+
+            <!-- Sniper Alert Feed -->
+            <div class="sniper-feed-wrap">
+                <h3 class="sub-title">🚨 Alert Feed</h3>
+                <div class="sniper-feed" id="sniper-feed">
+                    <div class="feed-entry info"><span class="feed-time">[--:--:--]</span> Sniper Engine ready. Click "Start Sniper" to begin monitoring.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════ CLUSTER INTELLIGENCE DASHBOARD ═══════════ -->
+        <section class="cluster-section" id="cluster-section">
+            <div class="panel-header">
+                <h2 class="section-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="15" r="3" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1"/><line x1="7" y1="8" x2="9" y2="13" stroke="currentColor" stroke-width="1"/><line x1="13" y1="8" x2="11" y2="13" stroke="currentColor" stroke-width="1"/></svg>
+                    Cluster Intelligence — Real-Time Wallet Relationships
+                </h2>
+                <div class="cluster-controls">
+                    <span class="badge autopilot-badge" id="ci-autopilot">🤖 AUTO-PILOT</span>
+                    <span class="badge" id="ci-status">Starting...</span>
+                    <button class="btn btn-sm btn-accent" id="btn-cluster-scan">🔄 Manual Re-scan</button>
+                    <button class="btn btn-sm" id="btn-cluster-stop" disabled>⏹ Stop All</button>
+                </div>
+            </div>
+            <p class="section-desc">Tracks wallet-to-wallet relationships across top Solana tokens. Detects coordinated buying (bundled transactions), insider clusters, pump-and-dump chains, and alpha wallet patterns. Wallets connected by lines traded the same tokens within 5 minutes of each other.</p>
+
+            <!-- Cluster Stats Bar -->
+            <div class="cluster-stats-bar">
+                <div class="cluster-stat">
+                    <span class="stat-label">Wallets Mapped</span>
+                    <span class="stat-value accent" id="ci-wallet-count">0</span>
+                </div>
+                <div class="cluster-stat">
+                    <span class="stat-label">Relationships</span>
+                    <span class="stat-value" id="ci-edge-count">0</span>
+                </div>
+                <div class="cluster-stat">
+                    <span class="stat-label">Clusters</span>
+                    <span class="stat-value" id="ci-cluster-count">0</span>
+                </div>
+                <div class="cluster-stat">
+                    <span class="stat-label">Patterns</span>
+                    <span class="stat-value warning" id="ci-pattern-count">0</span>
+                </div>
+                <div class="cluster-stat">
+                    <span class="stat-label">Hot Tokens</span>
+                    <span class="stat-value success" id="ci-hot-count">0</span>
+                </div>
+                <div class="cluster-stat">
+                    <span class="stat-label">WebSocket</span>
+                    <span class="stat-value" id="ci-ws-status">⚫ Off</span>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="cluster-tabs">
+                <button class="cluster-tab active" data-tab="graph">🕸️ Relationship Graph</button>
+                <button class="cluster-tab" data-tab="feed">📡 Live Feed</button>
+                <button class="cluster-tab" data-tab="tokens">🔥 Hot Tokens</button>
+                <button class="cluster-tab" data-tab="patterns">🎯 Patterns</button>
+            </div>
+
+            <!-- Tab Content: Graph -->
+            <div class="cluster-tab-content active" id="tab-graph">
+                <canvas id="cluster-graph-canvas"></canvas>
+                <div class="graph-info">
+                    <span>🟢 SOL Transfer</span>
+                    <span>🟣 Token Transfer</span>
+                    <span>🔵 Co-Trade (same token ≤5min)</span>
+                    <span>🔴 Buy→Sell Chain (pump & dump)</span>
+                </div>
+                <!-- Auto-generated insights panel -->
+                <div class="cluster-insights" id="cluster-insights">
+                    <h3 class="ci-insights-title">📊 Network Insights</h3>
+                    <div id="ci-insights-content" class="ci-insights-body">
+                        <p class="ci-insight-placeholder">Scanning wallets... Insights will appear automatically when relationships are detected between wallets.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Live Feed -->
+            <div class="cluster-tab-content" id="tab-feed">
+                <div class="cluster-feed" id="cluster-feed">
+                    <div class="feed-entry info"><span class="feed-time">[--:--:--]</span> Waiting for cluster scan...</div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Hot Tokens -->
+            <div class="cluster-tab-content" id="tab-tokens">
+                <div class="hot-tokens-grid" id="hot-tokens-grid">
+                    <div class="hot-token-placeholder">Run a cluster scan to discover hot tokens</div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Patterns -->
+            <div class="cluster-tab-content" id="tab-patterns">
+                <div class="patterns-header" id="patterns-header">
+                    <div class="pattern-legend">
+                        <span class="pl-item" style="color:#FF4D6A;">🔴 Pump & Dump — Wallets coordinating buy→sell to trap retail</span>
+                        <span class="pl-item" style="color:#FF9500;">🟠 Wash Trading — Same entity cycling volume to fake interest</span>
+                        <span class="pl-item" style="color:#14F195;">🟢 Alpha Cluster — Profitable wallets coordinating early entries</span>
+                        <span class="pl-item" style="color:#00D1FF;">🔵 Co-Trade — Wallets buying same token near-simultaneously</span>
+                    </div>
+                </div>
+                <div class="patterns-list" id="patterns-list">
+                    <div class="pattern-placeholder">No patterns detected yet. The scanner is building a wallet relationship map — patterns appear when coordinated activity is found.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Multibagger Radar -->
+        <section class="radar-section" id="radar-section">
+            <div class="panel-header">
+                <h2 class="section-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.3"/><circle cx="10" cy="10" r="5" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5"/><circle cx="10" cy="10" r="2" fill="#14F195"/><line x1="10" y1="10" x2="17" y2="5" stroke="#14F195" stroke-width="1.5" opacity="0.7"/></svg>
+                    Multibagger Radar
+                </h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span class="badge" id="radar-count">0 signals</span>
+                    <span class="badge" id="radar-outcome-badge">📊 Tracking: --</span>
+                </div>
+            </div>
+            <p class="section-desc">Auto-detects tokens with multibagger potential. Each signal includes <strong>plain-English reasons</strong> explaining why it's flagged. The system <strong>tracks outcomes</strong> over time — recording what went 10x+ and what rugged — to continuously improve pattern recognition.</p>
+
+            <!-- Outcome Stats Bar -->
+            <div class="radar-stats-bar" id="radar-stats-bar">
+                <div class="radar-stat"><span class="radar-stat-label">Tracked</span><span class="radar-stat-value" id="rs-total">0</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">🚀 Moons (10x+)</span><span class="radar-stat-value positive" id="rs-moons">0</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">✅ Good (3-10x)</span><span class="radar-stat-value" id="rs-goods" style="color:#14F195;">0</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">💀 Rugs</span><span class="radar-stat-value negative" id="rs-rugs">0</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">☠️ Dead</span><span class="radar-stat-value" id="rs-dead" style="color:var(--text-muted);">0</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">⏳ Active</span><span class="radar-stat-value" id="rs-active" style="color:#00D1FF;">0</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">Moon Rate</span><span class="radar-stat-value" id="rs-moonrate" style="color:#FFBA52;">0%</span></div>
+                <div class="radar-stat"><span class="radar-stat-label">Avg Peak</span><span class="radar-stat-value" id="rs-avgpeak" style="color:#B87AFF;">1.0x</span></div>
+            </div>
+
+            <!-- Signal Feed -->
+            <div class="radar-feed" id="radar-feed">
+                <div class="radar-empty">⏳ Starting Multibagger Radar... Signals will appear automatically once tokens are discovered.</div>
+            </div>
+        </section>
+
+        <!-- Filtered Wallets -->
+        <section class="filtered-section" id="filtered-section" style="display:none;">
+            <details class="filtered-details">
+                <summary class="filtered-summary">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M10.29 3.86L1.82 14a1.5 1.5 0 0 0 1.28 2.25h12.68a1.5 1.5 0 0 0 1.28-2.25L8.6 3.86a1.5 1.5 0 0 0-2.56 0z" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
+                    <span>Filtered Dev/Bot/Insider Wallets (<span id="filtered-count">0</span>)</span>
+                </summary>
+                <div class="filtered-list" id="filtered-list"></div>
+            </details>
+        </section>
+    </main>
+
+    <!-- Wallet Detail Modal -->
+    <div class="modal-overlay" id="modal-overlay" style="display:none;">
+        <div class="modal" id="wallet-modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Wallet Details</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- BubbleMaps Iframe Modal -->
+    <div class="bubblemaps-modal-overlay" id="bubblemaps-overlay" style="display:none;">
+        <div class="bubblemaps-modal">
+            <div class="bubblemaps-header">
+                <div class="bubblemaps-title">
+                    <span class="bubblemaps-icon">🫧</span>
+                    <h3 id="bubblemaps-token-name">BubbleMaps — Token Holder Map</h3>
+                </div>
+                <div class="bubblemaps-actions">
+                    <a href="#" id="bubblemaps-external-link" target="_blank" class="btn btn-sm btn-ghost">🔗 Open Full View</a>
+                    <a href="#" id="bubblemaps-solscan-link" target="_blank" class="btn btn-sm btn-ghost">🔍 Solscan</a>
+                    <button class="bubblemaps-close" id="bubblemaps-close">&times;</button>
+                </div>
+            </div>
+            <div class="bubblemaps-body">
+                <iframe id="bubblemaps-iframe" allow="clipboard-write" style="width:100%;height:100%;border:none;border-radius:8px;"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- Token Detail Modal -->
+    <div class="token-detail-overlay" id="token-detail-overlay" style="display:none;">
+        <div class="token-detail-modal">
+            <div class="token-detail-header">
+                <div class="token-detail-title">
+                    <span class="token-detail-symbol" id="td-symbol">TOKEN</span>
+                    <span class="token-detail-score" id="td-score">0/100</span>
+                    <span class="token-detail-age" id="td-age"></span>
+                </div>
+                <button class="bubblemaps-close" id="td-close">&times;</button>
+            </div>
+            <div class="token-detail-body">
+                <!-- Quick Actions Bar -->
+                <div class="td-actions" id="td-actions"></div>
+
+                <!-- Tabs -->
+                <div class="td-tabs">
+                    <button class="td-tab active" data-tdtab="overview">📊 Overview</button>
+                    <button class="td-tab" data-tdtab="chart">📈 Chart</button>
+                    <button class="td-tab" data-tdtab="holders">👥 Holders</button>
+                    <button class="td-tab" data-tdtab="bubblemap">🫧 BubbleMaps</button>
+                    <button class="td-tab" data-tdtab="social">🐦 Social</button>
+                </div>
+
+                <!-- Tab: Overview -->
+                <div class="td-tab-content active" id="td-overview">
+                    <div class="td-metrics-grid" id="td-metrics"></div>
+                    <div class="td-score-breakdown" id="td-score-breakdown"></div>
+                </div>
+
+                <!-- Tab: Chart -->
+                <div class="td-tab-content" id="td-chart">
+                    <div class="td-chart-frame" id="td-chart-frame"></div>
+                </div>
+
+                <!-- Tab: Holders -->
+                <div class="td-tab-content" id="td-holders">
+                    <div class="td-holders-info" id="td-holders-info">Loading top holders...</div>
+                </div>
+
+                <!-- Tab: BubbleMaps -->
+                <div class="td-tab-content" id="td-bubblemap">
+                    <div class="td-bm-frame" id="td-bm-frame"></div>
+                </div>
+
+                <!-- Tab: Social -->
+                <div class="td-tab-content" id="td-social">
+                    <div class="td-social-links" id="td-social-links"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="db.js?v=7"></script>
+    <script src="sniper-engine.js?v=7"></script>
+    <script src="cluster-intel.js?v=7"></script>
+    <script src="paper-trade.js?v=7"></script>
+    <script src="radar.js?v=7"></script>
+    <script src="app.js?v=7"></script>
+</body>
+</html>
