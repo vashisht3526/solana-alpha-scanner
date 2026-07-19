@@ -496,6 +496,10 @@
                     <span class="stat-value success" id="sniper-hot">0</span>
                 </div>
                 <div class="sniper-stat">
+                    <span class="stat-label">⛔ Filtered</span>
+                    <span class="stat-value" id="sniper-filtered-today" style="color:#FF3B30;">0</span>
+                </div>
+                <div class="sniper-stat">
                     <span class="stat-label">Last Scan</span>
                     <span class="stat-value" id="sniper-last-scan">—</span>
                 </div>
@@ -736,9 +740,34 @@
                     <button class="td-tab" data-tdtab="social">🐦 Social</button>
                 </div>
 
+                <!-- v3.0: Rejection Banner -->
+                <div id="td-rejection-banner" style="display:none;"></div>
+
                 <!-- Tab: Overview -->
                 <div class="td-tab-content active" id="td-overview">
                     <div class="td-metrics-grid" id="td-metrics"></div>
+                    <!-- v3.0: Social Presence Checkboxes -->
+                    <div class="td-social-checks" id="td-social-checks">
+                        <h4 style="margin:0 0 10px;font-size:0.8rem;color:var(--text-secondary);">Social Presence Check <span style="font-size:0.65rem;color:var(--text-muted);">(manual — check after opening social links)</span></h4>
+                        <div class="social-check-row">
+                            <label class="social-check-label">
+                                <input type="checkbox" id="social-check-x" class="social-check-input">
+                                <span class="social-check-icon">𝕏</span>
+                                <span>X/Twitter account exists & active</span>
+                            </label>
+                            <label class="social-check-label">
+                                <input type="checkbox" id="social-check-telegram" class="social-check-input">
+                                <span class="social-check-icon">📨</span>
+                                <span>Telegram group exists & active</span>
+                            </label>
+                            <label class="social-check-label">
+                                <input type="checkbox" id="social-check-website" class="social-check-input">
+                                <span class="social-check-icon">🌐</span>
+                                <span>Website exists</span>
+                            </label>
+                        </div>
+                        <div class="social-check-status" id="social-check-status">No social links checked — score penalty -10</div>
+                    </div>
                     <div class="td-score-breakdown" id="td-score-breakdown"></div>
                 </div>
 
@@ -765,11 +794,11 @@
         </div>
     </div>
 
-    <script src="db.js?v=7"></script>
-    <script src="sniper-engine.js?v=7"></script>
-    <script src="cluster-intel.js?v=7"></script>
-    <script src="paper-trade.js?v=7"></script>
-    <script src="radar.js?v=7"></script>
-    <script src="app.js?v=7"></script>
+    <script src="db.js?v=8"></script>
+    <script src="sniper-engine.js?v=8"></script>
+    <script src="cluster-intel.js?v=8"></script>
+    <script src="paper-trade.js?v=8"></script>
+    <script src="radar.js?v=8"></script>
+    <script src="app.js?v=8"></script>
 </body>
 </html>

@@ -45,14 +45,56 @@ const SniperEngine = (() => {
         SMART_WALLET_MATCH: 10,     // DECREASED — currently broken (0/110 matches)
         MCAP_ZONE: 14,              // INCREASED — moderate predictor with sweet spot
         DEX_BOOST: 5,               // KEPT — negative correlation
-        ANTI_RUG: 5,                // KEPT same
+        ANTI_RUG: 0,                // v3.0: DISABLED — inverted/broken (antiRug=5 has 0% multibagger rate)
+        SOCIAL_PRESENCE: 5,         // v3.0: NEW — redistributed from AntiRug, manual checkbox scoring
     };
 
     let ws = null;
 
+    // ——— Platform Detection ———
+    // Determines platform from DexScreener dexId and discovery source
+    function detectPlatform(dexId, source, ageMs) {
+        const id = (dexId || '').toLowerCase();
+        const ageMinutes = ageMs ? ageMs / 60000 : 999;
+
+        // PumpPortal WebSocket mints are always pump.fun pre-graduation
+        if (source === 'pumpportal_ws') {
+            return { platform: 'pump.fun', phase: 'pre-graduation', color: '#3B82F6', label: 'pump.fun' };
+        }
+
+        // Raydium-based DEXes
+        if (id.includes('raydium')) {
+            // Very new raydium pairs from pump.fun graduation appear as raydium
+            // If age < 5min on raydium, likely just graduated from pump.fun → pumpswap
+            if (ageMinutes < 60) {
+                return { platform: 'pumpswap', phase: ageMinutes < 15 ? 'post-grad-fresh' : ageMinutes < 30 ? 'post-grad-aging' : 'post-grad-dump', color: '#F97316', label: 'pumpswap' };
+            }
+            return { platform: 'raydium', phase: ageMinutes < 30 ? 'early' : 'mature', color: '#8B5CF6', label: 'raydium' };
+        }
+
+        if (id.includes('orca')) {
+            return { platform: 'orca', phase: ageMinutes < 30 ? 'early' : 'mature', color: '#8B5CF6', label: 'orca' };
+        }
+
+        // Pump.fun pairs appear on DexScreener with various dexIds
+        // If dexId contains 'pump' it's likely pump.fun or pumpswap
+        if (id.includes('pump')) {
+            if (ageMinutes < 60) {
+                return { platform: 'pumpswap', phase: ageMinutes < 15 ? 'post-grad-fresh' : ageMinutes < 30 ? 'post-grad-aging' : 'post-grad-dump', color: '#F97316', label: 'pumpswap' };
+            }
+            return { platform: 'pumpswap', phase: 'post-grad-dump', color: '#F97316', label: 'pumpswap' };
+        }
+
+        // Default: unknown platform, treat as raydium-like
+        return { platform: 'unknown', phase: 'unknown', color: '#6B7280', label: dexId || 'DEX' };
+    }
+
     // ——— State ———
     const state = {
         trackedTokens: new Map(),   // tokenAddress → TokenData
+        rejectedTokens: new Map(),  // v3.0: tokenAddress → { tokenData, reason, rejectedAt }
+        filteredToday: 0,           // v3.0: count of tokens filtered today
+        filteredTodayReset: 0,      // v3.0: timestamp of last daily reset
         sniperAlerts: [],           // High-score alerts
         scanHistory: [],            // Recent scan results
         knownAlphaWallets: new Set(), // Loaded from scanner results
@@ -309,8 +351,16 @@ const SniperEngine = (() => {
                 createdAt: p.pairCreatedAt || null,
                 ageMs: ageMs,
                 ageHours: ageMs ? ageMs / 3600000 : null,
+                ageMinutes: ageMs ? ageMs / 60000 : null,
                 url: p.url || `https://dexscreener.com/solana/${tokenAddress}`,
                 dexId: p.dexId,
+                // v3.0: Platform detection (will be set properly in analyzeToken)
+                platformInfo: null,
+                // v3.0: Rejection tracking
+                rejected: false,
+                rejectionReason: null,
+                // v3.0: Social presence (manual checkboxes, default unchecked)
+                socialPresence: { x: false, telegram: false, website: false },
                 // External analysis links
                 bubbleMapsUrl: SNIPER_CONFIG.BUBBLEMAPS_URL + tokenAddress,
                 solanaFmUrl: SNIPER_CONFIG.SOLANAFM_URL + tokenAddress,
@@ -401,17 +451,48 @@ const SniperEngine = (() => {
     function calculateSniperScore(tokenData, holderData, smartMoney) {
         const scores = {};
         let total = 0;
+        let scoreModifier = 0; // v3.0: platform/filter adjustments applied after base score
 
-        // 1. AGE SWEET SPOT (10 pts) — 5min to 6hrs is ideal
-        const ageHours = tokenData.ageHours || 999;
-        if (ageHours >= 0.08 && ageHours <= 1) {
-            scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT;          // Peak: 5min-1hr
-        } else if (ageHours > 1 && ageHours <= 6) {
-            scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.7;    // Good: 1-6hr
-        } else if (ageHours > 6 && ageHours <= 24) {
-            scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.3;    // Okay: 6-24hr
+        // 1. AGE SWEET SPOT (15 pts) — v3.0: Platform-aware age scoring
+        const ageMinutes = tokenData.ageMinutes || (tokenData.ageHours ? tokenData.ageHours * 60 : 99999);
+        const platform = tokenData.platformInfo?.platform || 'unknown';
+
+        if (platform === 'pumpswap') {
+            // Pumpswap: graduated tokens, time-sensitive
+            if (ageMinutes <= 15) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT;          // Fresh post-grad: full score
+            } else if (ageMinutes <= 30) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.5;    // Aging: half score
+                scoreModifier -= 10;                                  // v3.0: -10 penalty
+            } else if (ageMinutes <= 60) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.2;
+                scoreModifier -= 20;                                  // v3.0: -20 penalty
+            } else {
+                scores.age = 0;                                       // >60min: should be rejected before scoring
+            }
+        } else if (platform === 'pump.fun') {
+            // Pump.fun: pre-graduation, early detection bonus
+            if (ageMinutes <= 5) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT;            // Very early detection
+                scoreModifier += 5;                                    // v3.0: +5 bonus
+            } else if (ageMinutes <= 30) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT;            // Sweet spot
+            } else {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.4;
+                scoreModifier -= 10;                                   // v3.0: -10 missed window
+            }
         } else {
-            scores.age = 0;                                       // Too old or too young
+            // Raydium/Orca/unknown: original logic adapted
+            const ageHours = ageMinutes / 60;
+            if (ageHours >= 0.08 && ageHours <= 1) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT;
+            } else if (ageHours > 1 && ageHours <= 6) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.7;
+            } else if (ageHours > 6 && ageHours <= 24) {
+                scores.age = SCORE_WEIGHTS.AGE_SWEET_SPOT * 0.3;
+            } else {
+                scores.age = 0;
+            }
         }
 
         // 2. VOLUME/MCAP RATIO (15 pts) — High ratio = explosive interest
@@ -466,7 +547,7 @@ const SniperEngine = (() => {
             scores.holders = SCORE_WEIGHTS.HOLDER_GROWTH * 0.1;
         }
 
-        // 6. BUY/SELL RATIO (10 pts) — Strong buy pressure
+        // 6. BUY/SELL RATIO (8 pts) — Strong buy pressure
         const buys1h = txns1h.buys || 0;
         const sells1h = txns1h.sells || 0;
         const buySellRatio = sells1h > 0 ? buys1h / sells1h : (buys1h > 0 ? 5 : 0);
@@ -478,6 +559,22 @@ const SniperEngine = (() => {
             scores.buySell = SCORE_WEIGHTS.BUY_SELL_RATIO * 0.3;
         } else {
             scores.buySell = 0;                                          // More selling
+        }
+
+        // v3.0: Sell pressure score modifier (in addition to hard filter)
+        const sellPressureRatio = buys1h > 0 ? sells1h / buys1h : 999;
+        if (sellPressureRatio > 0.8 && sellPressureRatio <= 1.0) {
+            scoreModifier -= 15;   // High sell pressure
+        } else if (sellPressureRatio < 0.3) {
+            scoreModifier += 5;    // Very low sell pressure — bullish
+        }
+
+        // v3.0: Liquidity/MCap ratio score modifier (in addition to hard filter)
+        const liqMcapRatio = tokenData.marketCap > 0 ? tokenData.liquidity / tokenData.marketCap : 0;
+        if (liqMcapRatio >= 0.20 && liqMcapRatio < 0.30) {
+            scoreModifier -= 10;   // Thin liquidity warning
+        } else if (liqMcapRatio > 0.50) {
+            scoreModifier += 5;    // Deep liquidity — bullish
         }
 
         // 7. SMART WALLET MATCH (20 pts) — Highest weight!
@@ -509,25 +606,48 @@ const SniperEngine = (() => {
         scores.dexBoost = state.boostedTokens.has(tokenData.address)
             ? SCORE_WEIGHTS.DEX_BOOST : 0;
 
-        // 10. ANTI-RUG (5 pts)
-        let antiRug = SCORE_WEIGHTS.ANTI_RUG;
-        if (holderData) {
-            if (holderData.topHolderPct > 20) antiRug -= 3;     // Top holder too large
-            if (holderData.uniqueTopHolders < 3) antiRug -= 2;  // Too few holders
-        }
-        // Honeypot check: if there are 0 sells, suspicious
-        const sells24 = tokenData.txns24h.sells || 0;
-        if (sells24 === 0 && (tokenData.txns24h.buys || 0) > 10) {
-            antiRug = 0; // Likely honeypot
-        }
-        scores.antiRug = Math.max(0, antiRug);
+        // 10. ANTI-RUG — v3.0: DISABLED (weight=0, antiRug=5 has 0% multibagger rate)
+        // Kept as scores entry for backward compat but always 0
+        scores.antiRug = 0;
 
-        // Calculate total
-        total = Object.values(scores).reduce((sum, v) => sum + v, 0);
+        // 11. SOCIAL PRESENCE (5 pts) — v3.0: NEW, redistributed from AntiRug
+        // Scored from manual checkboxes: all 3 = +5, 2 = +3, 1 = -5, 0 = -10
+        const social = tokenData.socialPresence || { x: false, telegram: false, website: false };
+        const socialCount = (social.x ? 1 : 0) + (social.telegram ? 1 : 0) + (social.website ? 1 : 0);
+        if (socialCount >= 3) {
+            scores.socialPresence = SCORE_WEIGHTS.SOCIAL_PRESENCE;        // All 3: full 5 pts
+        } else if (socialCount === 2) {
+            scores.socialPresence = 3;                                      // 2 of 3: +3
+        } else if (socialCount === 1) {
+            scoreModifier -= 5;                                             // Only 1: penalty
+            scores.socialPresence = 0;
+        } else {
+            scoreModifier -= 10;                                            // None: heavy penalty
+            scores.socialPresence = 0;
+        }
+
+        // v3.0: Platform adjustment modifier
+        const platformInfo = tokenData.platformInfo;
+        if (platformInfo) {
+            if (platformInfo.platform === 'pumpswap' && platformInfo.phase === 'post-grad-fresh') {
+                scoreModifier -= 5;   // Pumpswap <15min: -5
+            } else if (platformInfo.platform === 'pumpswap' && platformInfo.phase === 'post-grad-aging') {
+                scoreModifier -= 15;  // Pumpswap 15-30min: -15
+            } else if ((platformInfo.platform === 'raydium' || platformInfo.platform === 'orca') && platformInfo.phase === 'early') {
+                scoreModifier += 5;   // Raydium/Orca <30min: +5
+            } else if ((platformInfo.platform === 'raydium' || platformInfo.platform === 'orca') && platformInfo.phase === 'mature') {
+                scoreModifier -= 10;  // Raydium/Orca >30min: -10
+            }
+        }
+
+        // Calculate total with modifier
+        total = Object.values(scores).reduce((sum, v) => sum + v, 0) + scoreModifier;
+        total = Math.max(0, Math.min(100, total)); // Clamp 0-100
 
         return {
             total: Math.round(total),
             scores,
+            scoreModifier,
             grade: total >= 75 ? '🔥 S-TIER' :
                    total >= 60 ? '⚡ A-TIER' :
                    total >= 45 ? '✅ B-TIER' :
@@ -541,6 +661,34 @@ const SniperEngine = (() => {
     //  FULL TOKEN ANALYSIS — Combines all data sources
     // ======================================================================
 
+    // v3.0: Helper to track a rejection
+    function rejectToken(tokenData, reason, source) {
+        // Reset daily counter at midnight
+        const today = new Date().setHours(0,0,0,0);
+        if (state.filteredTodayReset < today) {
+            state.filteredToday = 0;
+            state.filteredTodayReset = today;
+        }
+        state.filteredToday++;
+
+        const rejected = {
+            ...tokenData,
+            rejected: true,
+            rejectionReason: reason,
+            source,
+            analyzedAt: now(),
+            score: { total: 0, scores: {}, grade: '⛔ REJECTED', isSniper: false, isAlert: false },
+        };
+
+        // Store in both maps so UI can display rejected tokens
+        state.rejectedTokens.set(tokenData.address, rejected);
+        state.trackedTokens.set(tokenData.address, rejected);
+
+        sniperLog(`⛔ REJECTED ${tokenData.symbol}: ${reason}`, 'warning');
+        if (state.onUpdate) state.onUpdate();
+        return rejected;
+    }
+
     async function analyzeToken(tokenAddress, source = 'manual') {
         // Step 1: Get pair data from DexScreener
         const tokenData = await enrichTokenData(tokenAddress);
@@ -550,14 +698,42 @@ const SniperEngine = (() => {
         if (tokenData.ageHours && tokenData.ageHours > SNIPER_CONFIG.MAX_AGE_HOURS) return null;
         if (tokenData.liquidity < SNIPER_CONFIG.MIN_LIQUIDITY) return null;
 
-        // Step 1b: RugCheck Safety Gate (binary pass/fail)
+        // v3.0: Step 1a — Platform Detection
+        tokenData.platformInfo = detectPlatform(tokenData.dexId, source, tokenData.ageMs);
+
+        // v3.0: Step 1b — Platform-based auto-rejection
+        if (tokenData.platformInfo.platform === 'pumpswap' && tokenData.platformInfo.phase === 'post-grad-dump') {
+            const ageMin = tokenData.ageMinutes || 999;
+            if (ageMin > 60) {
+                return rejectToken(tokenData, 'LATE: Pumpswap >60min — dump phase', source);
+            }
+        }
+
+        // Step 1c: RugCheck Safety Gate (binary pass/fail)
         const safety = await checkRugSafety(tokenAddress);
         if (!safety.pass) {
-            sniperLog(`REJECTED ${tokenData.symbol}: ${safety.reason}`, 'warning');
-            return null;
+            return rejectToken(tokenData, `UNSAFE: ${safety.reason}`, source);
         }
         tokenData.safetyGate = safety;
         await sleep(100);
+
+        // v3.0: Step 1d — Sell Pressure Hard Filter
+        const buys1h = tokenData.txns1h?.buys || 0;
+        const sells1h = tokenData.txns1h?.sells || 0;
+        if (buys1h > 0) {
+            const sellBuyRatio = sells1h / buys1h;
+            if (sellBuyRatio > 1.0) {
+                return rejectToken(tokenData, `DUMPING: More sells (${sells1h}) than buys (${buys1h})`, source);
+            }
+        }
+
+        // v3.0: Step 1e — Liquidity/MCap Hard Filter
+        if (tokenData.marketCap > 0) {
+            const liqMcapRatio = tokenData.liquidity / tokenData.marketCap;
+            if (liqMcapRatio < 0.20) {
+                return rejectToken(tokenData, `THIN: Liq ${(liqMcapRatio * 100).toFixed(0)}% of MCap (need >20%)`, source);
+            }
+        }
 
         // Step 2: Get holder distribution (async, may fail)
         const holderData = await getTokenHolders(tokenAddress);
@@ -575,6 +751,8 @@ const SniperEngine = (() => {
             smartMoney,
             score,
             source,
+            rejected: false,
+            rejectionReason: null,
             analyzedAt: now(),
             lastPriceUpdate: now(),
         };
@@ -593,10 +771,10 @@ const SniperEngine = (() => {
             state.sniperAlerts.unshift(alert);
             if (state.sniperAlerts.length > 50) state.sniperAlerts.pop();
             state.totalAlerts++;
-            sniperLog(`🚨 SNIPER ALERT: ${tokenData.symbol} — Score ${score.total}/100 ${score.grade} | MCap ${formatUsd(tokenData.marketCap)} | Age ${timeAgo(tokenData.createdAt)}`, 'alert');
+            sniperLog(`🚨 SNIPER ALERT: ${tokenData.symbol} — Score ${score.total}/100 ${score.grade} [${tokenData.platformInfo?.label}] | MCap ${formatUsd(tokenData.marketCap)} | Age ${timeAgo(tokenData.createdAt)}`, 'alert');
             if (state.onAlert) state.onAlert(alert);
         } else if (score.isSniper) {
-            sniperLog(`⚡ High potential: ${tokenData.symbol} — Score ${score.total}/100 | MCap ${formatUsd(tokenData.marketCap)}`, 'success');
+            sniperLog(`⚡ High potential: ${tokenData.symbol} — Score ${score.total}/100 [${tokenData.platformInfo?.label}] | MCap ${formatUsd(tokenData.marketCap)}`, 'success');
         }
 
         return analysis;
@@ -853,8 +1031,11 @@ const SniperEngine = (() => {
             totalAlerts: state.totalAlerts,
             trackedCount: state.trackedTokens.size,
             lastScanTime: state.lastScanTime,
-            sniperTokens: tokens.filter(t => t.score.isSniper),
-            alertTokens: tokens.filter(t => t.score.isAlert),
+            sniperTokens: tokens.filter(t => t.score.isSniper && !t.rejected),
+            alertTokens: tokens.filter(t => t.score.isAlert && !t.rejected),
+            // v3.0: Rejection tracking
+            rejectedTokens: [...state.rejectedTokens.values()],
+            filteredToday: state.filteredToday,
         };
     }
 
@@ -874,6 +1055,7 @@ const SniperEngine = (() => {
         loadTrackedTokens,
         getState,
         checkRugSafety,
+        calculateSniperScore,       // v3.0: exposed for social checkbox re-scoring
         get isRunning() { return state.isRunning; },
         set onUpdate(cb) { state.onUpdate = cb; },
         set onAlert(cb) { state.onAlert = cb; },

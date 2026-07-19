@@ -2047,23 +2047,37 @@
         }
 
         function renderSniperCard(token) {
-            const tier = getTierClass(token.score.total);
+            const isRejected = token.rejected;
+            const tier = isRejected ? 'rejected' : getTierClass(token.score.total);
             const priceChange = token.priceChange1h || 0;
             const changeClass = priceChange >= 0 ? 'positive' : 'negative';
             const changeSign = priceChange >= 0 ? '+' : '';
+            const platformInfo = token.platformInfo || { label: token.dexId || 'DEX', color: '#6B7280' };
+
+            // v3.0: Rejection banner or Safe badge
+            const statusBanner = isRejected
+                ? `<div class="sniper-rejection-banner">⛔ REJECTED: ${token.rejectionReason || 'Unknown'}</div>`
+                : token.safetyGate?.pass
+                    ? `<div class="sniper-safe-badge">🛡️ SAFE</div>`
+                    : '';
+
+            // v3.0: Platform tag
+            const platformTag = `<span class="sniper-platform-tag" style="background:${platformInfo.color}22;color:${platformInfo.color};border:1px solid ${platformInfo.color}44;">${platformInfo.label}</span>`;
 
             return `
                 <div class="sniper-card ${tier}">
+                    ${statusBanner}
                     <div class="sniper-card-header" style="cursor:pointer;" onclick="window.__openTokenDetail('${token.address}')">
                         <div>
-                            <div class="sniper-token-name">${token.symbol}</div>
+                            <div class="sniper-token-name">${token.symbol} ${platformTag}</div>
                             <div class="sniper-token-age">Age: ${timeAgo(token.createdAt)} • ${token.dexId || 'DEX'}</div>
                         </div>
-                        <div class="sniper-score-badge ${tier}">${token.score.total}/100</div>
+                        ${isRejected
+                            ? `<div class="sniper-score-badge rejected">⛔</div>`
+                            : `<div class="sniper-score-badge ${tier}">${token.score.total}/100</div>`
+                        }
                     </div>
-                    <div class="sniper-score-bar">
-                        <div class="sniper-score-fill ${tier}" style="width:${token.score.total}%"></div>
-                    </div>
+                    ${!isRejected ? `<div class="sniper-score-bar"><div class="sniper-score-fill ${tier}" style="width:${token.score.total}%"></div></div>` : ''}
                     <div class="sniper-metrics">
                         <div class="sniper-metric">
                             <span class="sniper-metric-label">MCap</span>
@@ -2093,7 +2107,7 @@
                     <div class="sniper-tools">
                         <button class="sniper-tool-btn primary" onclick="window.__openTokenDetail('${token.address}')">🔬 View Details</button>
                         <button class="sniper-tool-btn" onclick="window.__openBubbleMaps('${token.address}','${token.symbol}')">🫧 BubbleMaps</button>
-                        <button class="sniper-tool-btn copy-trade" onclick="window.__sniperCopyTrade('${token.address}')">📋 Paper Trade</button>
+                        <button class="sniper-tool-btn copy-trade${isRejected ? ' disabled' : ''}" onclick="${isRejected ? 'return false' : `window.__sniperCopyTrade('${token.address}')`}" ${isRejected ? 'disabled title="Token rejected — cannot paper trade"' : ''}>📋 Paper Trade</button>
                     </div>
                 </div>
             `;
@@ -2109,6 +2123,10 @@
             sniperEls.alertsCount.textContent = s.totalAlerts;
             sniperEls.hot.textContent = s.sniperTokens.length;
             sniperEls.lastScan.textContent = s.lastScanTime ? timeAgo(s.lastScanTime) + ' ago' : '—';
+
+            // v3.0: Update filtered count
+            const filteredEl = document.getElementById('sniper-filtered-today');
+            if (filteredEl) filteredEl.textContent = s.filteredToday || 0;
 
             // Status badge
             if (s.isRunning) {
@@ -2297,12 +2315,14 @@
                     console.log(`📦 [DB] Loaded ${alphaWallets.length} alpha wallets from DB`);
                 }
 
-                // Restore saved tracked tokens into sniper engine
-                const savedTokens = await ScannerDB.getAllTokens();
-                if (savedTokens.length > 0 && typeof SniperEngine !== 'undefined') {
-                    SniperEngine.loadTrackedTokens(savedTokens);
-                    console.log(`📦 [DB] Restored ${savedTokens.length} tracked tokens from DB`);
-                }
+                // v3.0: DISABLED — stale DB tokens lack v3.0 fields (platformInfo, rejected, socialPresence)
+                // and pollute the grid with old data. Sniper engine discovers fresh tokens on start.
+                // const savedTokens = await ScannerDB.getAllTokens();
+                // if (savedTokens.length > 0 && typeof SniperEngine !== 'undefined') {
+                //     SniperEngine.loadTrackedTokens(savedTokens);
+                //     console.log(`📦 [DB] Restored ${savedTokens.length} tracked tokens from DB`);
+                // }
+                console.log('📦 [DB] v3.0: Skipping stale token restore — engine will discover fresh tokens');
 
                 // Restore saved paper trading metrics, open positions & history
                 const portfolioSetting = await ScannerDB.getSetting('portfolio');
@@ -2718,12 +2738,40 @@
 
             // Header
             tdSymbol.textContent = token.symbol;
-            tdScore.textContent = `${token.score.total}/100 ${token.score.grade || ''}`;
-            tdScore.style.background = token.score.total >= 60 ? 'rgba(255,59,48,0.15)' : token.score.total >= 40 ? 'rgba(255,149,0,0.15)' : 'rgba(255,255,255,0.05)';
-            tdScore.style.color = token.score.total >= 60 ? '#FF3B30' : token.score.total >= 40 ? '#FF9500' : 'var(--text-muted)';
+
+            // v3.0: Show platform tag in header
+            const platformInfo = token.platformInfo || { label: token.dexId || 'DEX', color: '#6B7280' };
+            const platformHTML = `<span class="sniper-platform-tag" style="background:${platformInfo.color}22;color:${platformInfo.color};border:1px solid ${platformInfo.color}44;font-size:0.65rem;margin-left:8px;">${platformInfo.label}</span>`;
+
+            // v3.0: Show rejection or safe status in score
+            if (token.rejected) {
+                tdScore.innerHTML = `<span style="color:#FF3B30;">⛔ REJECTED</span> ${platformHTML}`;
+                tdScore.style.background = 'rgba(255,59,48,0.15)';
+                tdScore.style.color = '#FF3B30';
+            } else {
+                const safeHTML = token.safetyGate?.pass ? `<span style="color:#14F195;margin-left:6px;">🛡️ SAFE</span>` : '';
+                tdScore.innerHTML = `${token.score.total}/100 ${token.score.grade || ''} ${safeHTML} ${platformHTML}`;
+                tdScore.style.background = token.score.total >= 60 ? 'rgba(255,59,48,0.15)' : token.score.total >= 40 ? 'rgba(255,149,0,0.15)' : 'rgba(255,255,255,0.05)';
+                tdScore.style.color = token.score.total >= 60 ? '#FF3B30' : token.score.total >= 40 ? '#FF9500' : 'var(--text-muted)';
+            }
             tdAge.textContent = `Age: ${timeAgo(token.createdAt)} • ${token.dexId || 'DEX'} • ${token.address.slice(0,8)}…`;
 
-            // Quick Actions
+            // v3.0: Rejection reason banner in detail view
+            const rejectionBannerEl = document.getElementById('td-rejection-banner');
+            if (rejectionBannerEl) {
+                if (token.rejected) {
+                    rejectionBannerEl.innerHTML = `<div class="sniper-rejection-banner" style="margin-bottom:12px;">⛔ REJECTED: ${token.rejectionReason || 'Unknown reason'}</div>`;
+                    rejectionBannerEl.style.display = 'block';
+                } else {
+                    rejectionBannerEl.style.display = 'none';
+                }
+            }
+
+            // Quick Actions — v3.0: disable paper trade for rejected tokens
+            const paperTradeBtn = token.rejected
+                ? `<button class="td-action-btn primary disabled" disabled title="Token rejected — cannot paper trade">📋 Paper Trade</button>`
+                : `<button class="td-action-btn primary" onclick="window.__sniperCopyTrade('${token.address}');closeTokenDetail();">📋 Paper Trade</button>`;
+
             tdActions.innerHTML = `
                 <a href="${token.url}" target="_blank" class="td-action-btn">📊 DexScreener</a>
                 <a href="https://solscan.io/token/${token.address}" target="_blank" class="td-action-btn">🔎 Solscan</a>
@@ -2731,7 +2779,7 @@
                 <a href="https://platform.arkhamintelligence.com/explorer/token/solana/${token.address}" target="_blank" class="td-action-btn">🕵️ Arkham</a>
                 <a href="https://rugcheck.xyz/tokens/${token.address}" target="_blank" class="td-action-btn">🛡️ RugCheck</a>
                 <button class="td-action-btn" onclick="window.__openBubbleMaps('${token.address}','${token.symbol}')">🫧 BubbleMaps Full</button>
-                <button class="td-action-btn primary" onclick="window.__sniperCopyTrade('${token.address}');closeTokenDetail();">📋 Paper Trade</button>
+                ${paperTradeBtn}
             `;
 
             // Initial render with cached data
@@ -2766,7 +2814,7 @@
                 { name: 'Token Freshness', pts: breakdown.freshness || 0, max: 10, color: '#FF3B30' },
                 { name: 'Holder Growth', pts: breakdown.holderDistribution || 0, max: 8, color: '#5CE0FF' },
                 { name: 'Social/Boost', pts: breakdown.socialBoost || 0, max: 5, color: '#5BFFC4' },
-                { name: 'Anti-Rug', pts: breakdown.pumpFunBonus || 0, max: 5, color: '#FF6B63' },
+                { name: 'Social Presence', pts: token.score?.scores?.socialPresence || 0, max: 5, color: '#A855F7' },
             ];
             tdScoreBreakdown.innerHTML = `<h4 style="margin:0 0 12px;font-size:0.8rem;color:var(--text-secondary);">Score Breakdown — ${token.score.total}/100</h4>` +
                 scoreItems.map(s => `
@@ -2845,6 +2893,62 @@
                     <span class="td-social-arrow">→</span>
                 </a>
             `;
+
+            // v3.0: Social Presence Checkboxes — wire up handlers
+            const socialCheckX = document.getElementById('social-check-x');
+            const socialCheckTg = document.getElementById('social-check-telegram');
+            const socialCheckWeb = document.getElementById('social-check-website');
+            const socialStatus = document.getElementById('social-check-status');
+
+            // Initialize checkbox state from token data
+            const sp = token.socialPresence || { x: false, telegram: false, website: false };
+            if (socialCheckX) socialCheckX.checked = sp.x;
+            if (socialCheckTg) socialCheckTg.checked = sp.telegram;
+            if (socialCheckWeb) socialCheckWeb.checked = sp.website;
+
+            function updateSocialStatus() {
+                const count = (socialCheckX?.checked ? 1 : 0) + (socialCheckTg?.checked ? 1 : 0) + (socialCheckWeb?.checked ? 1 : 0);
+                if (count >= 3) {
+                    socialStatus.textContent = 'All 3 verified ✅ — score +5';
+                    socialStatus.style.color = '#14F195';
+                } else if (count === 2) {
+                    socialStatus.textContent = '2 of 3 verified — score +3';
+                    socialStatus.style.color = '#FFBA52';
+                } else if (count === 1) {
+                    socialStatus.textContent = 'Only 1 verified ⚠️ — score penalty -5';
+                    socialStatus.style.color = '#FF9500';
+                } else {
+                    socialStatus.textContent = 'No social links checked — score penalty -10';
+                    socialStatus.style.color = '#FF3B30';
+                }
+            }
+
+            function onSocialChange() {
+                // Update token data in SniperEngine state
+                const sniperState = SniperEngine.getState();
+                const tok = sniperState.tokens.find(t => t.address === token.address);
+                if (tok && !tok.rejected) {
+                    tok.socialPresence = {
+                        x: socialCheckX?.checked || false,
+                        telegram: socialCheckTg?.checked || false,
+                        website: socialCheckWeb?.checked || false,
+                    };
+                    // Recalculate score with updated social presence
+                    if (tok.holderData !== undefined) {
+                        const smartMoney = tok.smartMoney || { matchCount: 0, matchedWallets: [] };
+                        tok.score = SniperEngine.calculateSniperScore
+                            ? SniperEngine.calculateSniperScore(tok, tok.holderData, smartMoney)
+                            : tok.score;
+                    }
+                }
+                updateSocialStatus();
+                renderSniperDashboard(); // Refresh card grid
+            }
+
+            if (socialCheckX) socialCheckX.onchange = onSocialChange;
+            if (socialCheckTg) socialCheckTg.onchange = onSocialChange;
+            if (socialCheckWeb) socialCheckWeb.onchange = onSocialChange;
+            updateSocialStatus();
 
             // Show modal + set up tabs
             tdOverlay.style.display = 'flex';
