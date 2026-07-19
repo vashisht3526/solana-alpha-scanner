@@ -643,6 +643,25 @@
         </div>
     </div>
 
+    <!-- Chart Iframe Modal -->
+    <div class="bubblemaps-modal-overlay" id="chart-overlay" style="display:none;">
+        <div class="bubblemaps-modal">
+            <div class="bubblemaps-header">
+                <div class="bubblemaps-title">
+                    <span class="bubblemaps-icon">📈</span>
+                    <h3 id="chart-token-name">Quick Chart — Token</h3>
+                </div>
+                <div class="bubblemaps-actions">
+                    <a href="#" id="chart-external-link" target="_blank" class="btn btn-sm btn-ghost">🔗 Open DexScreener</a>
+                    <button class="bubblemaps-close" id="chart-close">&times;</button>
+                </div>
+            </div>
+            <div class="bubblemaps-body">
+                <iframe id="chart-iframe" allow="clipboard-write" style="width:100%;height:100%;border:none;border-radius:8px;"></iframe>
+            </div>
+        </div>
+    </div>
+
     <!-- Token Detail Modal -->
     <div class="token-detail-overlay" id="token-detail-overlay" style="display:none;">
         <div class="token-detail-modal">

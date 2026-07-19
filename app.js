@@ -2137,6 +2137,7 @@
                     </div>
                     <div class="sniper-tools">
                         <button class="sniper-tool-btn primary" onclick="window.__openTokenDetail('${token.address}')">🔬 View Details</button>
+                        <button class="sniper-tool-btn" onclick="window.__openQuickChart('${token.pairAddress || token.address}','${token.symbol}')">📈 Chart</button>
                         <button class="sniper-tool-btn" onclick="window.__loadQuickBubbleMap('${token.address}','${token.symbol}')">🫧 BubbleMaps</button>
                         <button class="sniper-tool-btn copy-trade${tradeDisabled ? ' disabled' : ''}" onclick="${tradeDisabled ? 'return false' : `window.__sniperCopyTrade('${token.address}')`}" ${tradeDisabled ? `disabled title="${tradeLabel}"` : ''}>${tradeDisabled ? tradeLabel : '📋 Paper Trade'}</button>
                     </div>
@@ -2574,9 +2575,9 @@
                             </div>
                             <div class="radar-signal-actions">
                                 <button class="radar-action-btn primary" onclick="event.stopPropagation();window.__openTokenDetail('${sig.address}')">🔬 Details</button>
+                                <button class="radar-action-btn" onclick="event.stopPropagation();window.__openQuickChart('${sig.pairAddress || sig.address}','${sig.symbol}')">📈 Chart</button>
                                 <button class="radar-action-btn" onclick="event.stopPropagation();window.__loadQuickBubbleMap('${sig.address}','${sig.symbol}')">🫧 BubbleMaps</button>
                                 <button class="radar-action-btn" onclick="event.stopPropagation();window.__sniperCopyTrade('${sig.address}')">📋 Trade</button>
-                                <a class="radar-action-btn" href="${sig.url}" target="_blank" onclick="event.stopPropagation()">📊 Chart</a>
                             </div>
                         </div>
                     `;
@@ -2661,6 +2662,13 @@
         const bmSolscanLink = document.getElementById('bubblemaps-solscan-link');
         const bmCloseBtn = document.getElementById('bubblemaps-close');
 
+        // Chart Popup elements
+        const chartOverlay = document.getElementById('chart-overlay');
+        const chartIframe = document.getElementById('chart-iframe');
+        const chartTitle = document.getElementById('chart-token-name');
+        const chartExtLink = document.getElementById('chart-external-link');
+        const chartCloseBtn = document.getElementById('chart-close');
+
         // v3.0: BubbleMaps Quick Viewer loader (loads map in bottom cluster intelligence section)
         window.__loadQuickBubbleMap = (tokenAddress, tokenSymbol) => {
             const iframe = document.getElementById('bm-quick-iframe');
@@ -2684,6 +2692,31 @@
                 toast(`🫧 Quick BubbleMap loaded for ${tokenSymbol || 'token'}`);
             }
         };
+
+        // v3.0: Quick Chart Popup handler
+        window.__openQuickChart = (tokenAddress, tokenSymbol) => {
+            if (!chartOverlay || !chartIframe) return;
+
+            chartTitle.textContent = `📈 Quick Chart — ${tokenSymbol || tokenAddress.slice(0,8) + '...'}`;
+            chartExtLink.href = `https://dexscreener.com/solana/${tokenAddress}`;
+
+            chartIframe.src = `https://dexscreener.com/solana/${tokenAddress}?embed=1&theme=dark&info=0`;
+            chartOverlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            toast(`📈 Quick Chart loaded for ${tokenSymbol || 'token'}`);
+        };
+
+        function closeQuickChart() {
+            if (!chartOverlay) return;
+            chartOverlay.style.display = 'none';
+            chartIframe.src = '';
+            document.body.style.overflow = '';
+        }
+
+        if (chartCloseBtn) chartCloseBtn.addEventListener('click', closeQuickChart);
+        if (chartOverlay) chartOverlay.addEventListener('click', (e) => {
+            if (e.target === chartOverlay) closeQuickChart();
+        });
 
         window.__openBubbleMaps = (tokenAddress, tokenSymbol) => {
             if (!bmOverlay || !bmIframe) return;
@@ -2875,6 +2908,7 @@
                 <a href="https://solana.fm/address/${token.address}" target="_blank" class="td-action-btn">🔍 SolanaFM</a>
                 <a href="https://platform.arkhamintelligence.com/explorer/token/solana/${token.address}" target="_blank" class="td-action-btn">🕵️ Arkham</a>
                 <a href="https://rugcheck.xyz/tokens/${token.address}" target="_blank" class="td-action-btn">🛡️ RugCheck</a>
+                <button class="td-action-btn" onclick="window.__openQuickChart('${token.pairAddress || token.address}','${token.symbol}');closeTokenDetail();">📈 Chart Quick</button>
                 <button class="td-action-btn" onclick="window.__loadQuickBubbleMap('${token.address}','${token.symbol}');closeTokenDetail();">🫧 BubbleMaps Quick</button>
                 ${paperTradeBtn}
             `;
@@ -3127,6 +3161,7 @@
             if (e.key === 'Escape') {
                 if (tdOverlay && tdOverlay.style.display !== 'none') { closeTokenDetail(); return; }
                 if (bmOverlay && bmOverlay.style.display !== 'none') { closeBubbleMaps(); return; }
+                if (chartOverlay && chartOverlay.style.display !== 'none') { closeQuickChart(); return; }
             }
         });
     }
