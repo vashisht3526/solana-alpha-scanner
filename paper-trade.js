@@ -40,7 +40,7 @@ const PaperTrader = (() => {
             { pct: 300, sellFraction: 0.25, trailSL: 200 },
         ],
         breakevenTriggerPct: 30,      // move SL to breakeven at +30%
-        minScoreForEntry: 60,         // minimum sniper score to enter
+        minScoreForEntry: 65,         // minimum sniper score to enter
     };
 
     // ——— State ———

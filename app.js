@@ -1998,8 +1998,8 @@
             }, 3000);
         }
 
-        // AUTO-START: Begin autopilot on page load
-        startAutopilot();
+        // AUTO-START: Begin autopilot on page load (Disabled in v3.0 to save RPC limits & browser resources)
+        // startAutopilot();
 
         // ===================================================
         //  SNIPER ENGINE INTEGRATION
@@ -2137,7 +2137,7 @@
                     </div>
                     <div class="sniper-tools">
                         <button class="sniper-tool-btn primary" onclick="window.__openTokenDetail('${token.address}')">🔬 View Details</button>
-                        <button class="sniper-tool-btn" onclick="window.__openBubbleMaps('${token.address}','${token.symbol}')">🫧 BubbleMaps</button>
+                        <button class="sniper-tool-btn" onclick="window.__loadQuickBubbleMap('${token.address}','${token.symbol}')">🫧 BubbleMaps</button>
                         <button class="sniper-tool-btn copy-trade${tradeDisabled ? ' disabled' : ''}" onclick="${tradeDisabled ? 'return false' : `window.__sniperCopyTrade('${token.address}')`}" ${tradeDisabled ? `disabled title="${tradeLabel}"` : ''}>${tradeDisabled ? tradeLabel : '📋 Paper Trade'}</button>
                     </div>
                     ${tradeHint}
@@ -2334,10 +2334,10 @@
                 // This polls SniperEngine every 20s for tokens scoring >= minScore and auto-enters trades
                 // Previously used PaperTrader.start() which only set a flag but never polled!
                 if (typeof PaperTrader !== 'undefined') {
-                    PaperTrader.startSniperFollow(50);
+                    PaperTrader.startSniperFollow(65);
                     els.paperSection.style.display = 'block';
                     renderPaperTrading();
-                    console.log('🎯 [PaperTrader] Auto-Follow Sniper started — min score 50');
+                    console.log('🎯 [PaperTrader] Auto-Follow Sniper started — min score 65');
                 }
             }, 3000);
         }
@@ -2574,7 +2574,7 @@
                             </div>
                             <div class="radar-signal-actions">
                                 <button class="radar-action-btn primary" onclick="event.stopPropagation();window.__openTokenDetail('${sig.address}')">🔬 Details</button>
-                                <button class="radar-action-btn" onclick="event.stopPropagation();window.__openBubbleMaps('${sig.address}','${sig.symbol}')">🫧 BubbleMaps</button>
+                                <button class="radar-action-btn" onclick="event.stopPropagation();window.__loadQuickBubbleMap('${sig.address}','${sig.symbol}')">🫧 BubbleMaps</button>
                                 <button class="radar-action-btn" onclick="event.stopPropagation();window.__sniperCopyTrade('${sig.address}')">📋 Trade</button>
                                 <a class="radar-action-btn" href="${sig.url}" target="_blank" onclick="event.stopPropagation()">📊 Chart</a>
                             </div>
@@ -2660,6 +2660,30 @@
         const bmExtLink = document.getElementById('bubblemaps-external-link');
         const bmSolscanLink = document.getElementById('bubblemaps-solscan-link');
         const bmCloseBtn = document.getElementById('bubblemaps-close');
+
+        // v3.0: BubbleMaps Quick Viewer loader (loads map in bottom cluster intelligence section)
+        window.__loadQuickBubbleMap = (tokenAddress, tokenSymbol) => {
+            const iframe = document.getElementById('bm-quick-iframe');
+            const placeholder = document.getElementById('bm-quick-placeholder');
+            const tokenNameEl = document.getElementById('bm-quick-token-name');
+            const extLink = document.getElementById('bm-quick-external-link');
+            const section = document.getElementById('cluster-section');
+
+            if (iframe && placeholder && tokenNameEl && extLink) {
+                tokenNameEl.textContent = `${tokenSymbol || 'Token'} (${tokenAddress.slice(0,8)}...)`;
+                extLink.href = `https://app.bubblemaps.io/sol/token/${tokenAddress}`;
+                extLink.style.display = 'inline-block';
+
+                iframe.src = `https://iframe.bubblemaps.io/map?address=${tokenAddress}&chain=solana&partnerId=demo`;
+                iframe.style.display = 'block';
+                placeholder.style.display = 'none';
+
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth' });
+                }
+                toast(`🫧 Quick BubbleMap loaded for ${tokenSymbol || 'token'}`);
+            }
+        };
 
         window.__openBubbleMaps = (tokenAddress, tokenSymbol) => {
             if (!bmOverlay || !bmIframe) return;
@@ -2851,7 +2875,7 @@
                 <a href="https://solana.fm/address/${token.address}" target="_blank" class="td-action-btn">🔍 SolanaFM</a>
                 <a href="https://platform.arkhamintelligence.com/explorer/token/solana/${token.address}" target="_blank" class="td-action-btn">🕵️ Arkham</a>
                 <a href="https://rugcheck.xyz/tokens/${token.address}" target="_blank" class="td-action-btn">🛡️ RugCheck</a>
-                <button class="td-action-btn" onclick="window.__openBubbleMaps('${token.address}','${token.symbol}')">🫧 BubbleMaps Full</button>
+                <button class="td-action-btn" onclick="window.__loadQuickBubbleMap('${token.address}','${token.symbol}');closeTokenDetail();">🫧 BubbleMaps Quick</button>
                 ${paperTradeBtn}
             `;
 

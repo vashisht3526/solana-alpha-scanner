@@ -544,103 +544,27 @@
             </div>
         </section>
 
-        <!-- ═══════════ CLUSTER INTELLIGENCE DASHBOARD ═══════════ -->
+        <!-- ═══════════ BUBBLEMAPS QUICK ANALYZER (Replaces Cluster Intelligence) ═══════════ -->
         <section class="cluster-section" id="cluster-section">
             <div class="panel-header">
                 <h2 class="section-title">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="15" r="3" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1"/><line x1="7" y1="8" x2="9" y2="13" stroke="currentColor" stroke-width="1"/><line x1="13" y1="8" x2="11" y2="13" stroke="currentColor" stroke-width="1"/></svg>
-                    Cluster Intelligence — Real-Time Wallet Relationships
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    BubbleMaps Quick Analyzer
                 </h2>
                 <div class="cluster-controls">
-                    <span class="badge autopilot-badge" id="ci-autopilot">🤖 AUTO-PILOT</span>
-                    <span class="badge" id="ci-status">Starting...</span>
-                    <button class="btn btn-sm btn-accent" id="btn-cluster-scan">🔄 Manual Re-scan</button>
-                    <button class="btn btn-sm" id="btn-cluster-stop" disabled>⏹ Stop All</button>
+                    <span id="bm-quick-token-name" style="color: #14F195; font-weight: bold; margin-right: 12px; font-size: 0.85rem;">Select a token to analyze</span>
+                    <a href="#" id="bm-quick-external-link" target="_blank" class="btn btn-sm btn-accent" style="display:none; text-decoration:none;">Open External ↗</a>
                 </div>
             </div>
-            <p class="section-desc">Tracks wallet-to-wallet relationships across top Solana tokens. Detects coordinated buying (bundled transactions), insider clusters, pump-and-dump chains, and alpha wallet patterns. Wallets connected by lines traded the same tokens within 5 minutes of each other.</p>
+            <p class="section-desc">Instantly inspect token holder distributions and connections directly inside the app. Click "BubbleMaps" on any token card or radar row to load the map below instantly.</p>
 
-            <!-- Cluster Stats Bar -->
-            <div class="cluster-stats-bar">
-                <div class="cluster-stat">
-                    <span class="stat-label">Wallets Mapped</span>
-                    <span class="stat-value accent" id="ci-wallet-count">0</span>
+            <div style="width: 100%; height: 500px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative;">
+                <div id="bm-quick-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); padding: 24px;">
+                    <span style="font-size: 3rem; margin-bottom: 12px;">🫧</span>
+                    <p style="margin: 0; font-size: 0.9rem; font-weight: 600;">BubbleMaps Quick Viewer</p>
+                    <p style="margin: 6px 0 0; font-size: 0.75rem; opacity: 0.7;">Click "BubbleMaps" on any card above to analyze top holder distribution patterns</p>
                 </div>
-                <div class="cluster-stat">
-                    <span class="stat-label">Relationships</span>
-                    <span class="stat-value" id="ci-edge-count">0</span>
-                </div>
-                <div class="cluster-stat">
-                    <span class="stat-label">Clusters</span>
-                    <span class="stat-value" id="ci-cluster-count">0</span>
-                </div>
-                <div class="cluster-stat">
-                    <span class="stat-label">Patterns</span>
-                    <span class="stat-value warning" id="ci-pattern-count">0</span>
-                </div>
-                <div class="cluster-stat">
-                    <span class="stat-label">Hot Tokens</span>
-                    <span class="stat-value success" id="ci-hot-count">0</span>
-                </div>
-                <div class="cluster-stat">
-                    <span class="stat-label">WebSocket</span>
-                    <span class="stat-value" id="ci-ws-status">⚫ Off</span>
-                </div>
-            </div>
-
-            <!-- Tabs -->
-            <div class="cluster-tabs">
-                <button class="cluster-tab active" data-tab="graph">🕸️ Relationship Graph</button>
-                <button class="cluster-tab" data-tab="feed">📡 Live Feed</button>
-                <button class="cluster-tab" data-tab="tokens">🔥 Hot Tokens</button>
-                <button class="cluster-tab" data-tab="patterns">🎯 Patterns</button>
-            </div>
-
-            <!-- Tab Content: Graph -->
-            <div class="cluster-tab-content active" id="tab-graph">
-                <canvas id="cluster-graph-canvas"></canvas>
-                <div class="graph-info">
-                    <span>🟢 SOL Transfer</span>
-                    <span>🟣 Token Transfer</span>
-                    <span>🔵 Co-Trade (same token ≤5min)</span>
-                    <span>🔴 Buy→Sell Chain (pump & dump)</span>
-                </div>
-                <!-- Auto-generated insights panel -->
-                <div class="cluster-insights" id="cluster-insights">
-                    <h3 class="ci-insights-title">📊 Network Insights</h3>
-                    <div id="ci-insights-content" class="ci-insights-body">
-                        <p class="ci-insight-placeholder">Scanning wallets... Insights will appear automatically when relationships are detected between wallets.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tab Content: Live Feed -->
-            <div class="cluster-tab-content" id="tab-feed">
-                <div class="cluster-feed" id="cluster-feed">
-                    <div class="feed-entry info"><span class="feed-time">[--:--:--]</span> Waiting for cluster scan...</div>
-                </div>
-            </div>
-
-            <!-- Tab Content: Hot Tokens -->
-            <div class="cluster-tab-content" id="tab-tokens">
-                <div class="hot-tokens-grid" id="hot-tokens-grid">
-                    <div class="hot-token-placeholder">Run a cluster scan to discover hot tokens</div>
-                </div>
-            </div>
-
-            <!-- Tab Content: Patterns -->
-            <div class="cluster-tab-content" id="tab-patterns">
-                <div class="patterns-header" id="patterns-header">
-                    <div class="pattern-legend">
-                        <span class="pl-item" style="color:#FF4D6A;">🔴 Pump & Dump — Wallets coordinating buy→sell to trap retail</span>
-                        <span class="pl-item" style="color:#FF9500;">🟠 Wash Trading — Same entity cycling volume to fake interest</span>
-                        <span class="pl-item" style="color:#14F195;">🟢 Alpha Cluster — Profitable wallets coordinating early entries</span>
-                        <span class="pl-item" style="color:#00D1FF;">🔵 Co-Trade — Wallets buying same token near-simultaneously</span>
-                    </div>
-                </div>
-                <div class="patterns-list" id="patterns-list">
-                    <div class="pattern-placeholder">No patterns detected yet. The scanner is building a wallet relationship map — patterns appear when coordinated activity is found.</div>
-                </div>
+                <iframe id="bm-quick-iframe" style="display: none; width: 100%; height: 100%; border: none;" allow="clipboard-write"></iframe>
             </div>
         </section>
 
@@ -799,7 +723,7 @@
 
     <script src="db.js?v=8"></script>
     <script src="sniper-engine.js?v=8"></script>
-    <script src="cluster-intel.js?v=8"></script>
+    <!-- <script src="cluster-intel.js?v=8"></script> -->
     <script src="paper-trade.js?v=8"></script>
     <script src="radar.js?v=8"></script>
     <script src="app.js?v=8"></script>
