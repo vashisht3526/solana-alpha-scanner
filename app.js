@@ -2249,15 +2249,7 @@
             }
 
             // Render token cards
-            if (activeSniperTab === 'hidden') {
-                sniperEls.grid.innerHTML = `
-                    <div class="sniper-placeholder" style="grid-column: 1 / -1; padding: 40px 20px;">
-                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" opacity="0.3" style="margin: 0 auto 12px;"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>
-                        <p style="font-weight: bold; margin-bottom: 4px;">Low-Score & Rejected Tokens Hidden</p>
-                        <p style="font-size: 0.72rem; opacity: 0.6; max-width: 320px; margin: 0 auto;">Lunches scoring below 50 or rejected by safety checks are hidden from grid view to prevent noise. Click "Tradeable" or "Watchlist" to inspect qualified tokens.</p>
-                    </div>
-                `;
-            } else if (displayTokens.length > 0) {
+            if (displayTokens.length > 0) {
                 sniperEls.grid.innerHTML = displayTokens.slice(0, 30).map(renderSniperCard).join('');
             } else if (!s.isRunning) {
                 sniperEls.grid.innerHTML = `
