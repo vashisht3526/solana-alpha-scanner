@@ -2048,17 +2048,44 @@
 
         // v3.0: Determine if a token is tradeable based on score + social checks
         function isTokenTradeable(token) {
-            if (token.rejected) return { ok: false, reason: 'Token rejected' };
-            if (token.score.total < 65) return { ok: false, reason: `Score < 65` };
             const sp = token.socialPresence || {};
             const socialCount = (sp.x ? 1 : 0) + (sp.telegram ? 1 : 0) + (sp.website ? 1 : 0);
+
+            // Dynamic unreject if user checks a social link
+            if (token.rejected && token.rejectionReason === 'NO_SOCIALS' && socialCount > 0) {
+                token.rejected = false;
+                token.rejectionReason = null;
+            }
+
+            if (token.rejected) return { ok: false, reason: 'Token rejected' };
+            if (token.score.total < 65) return { ok: false, reason: `Score < 65` };
             if (socialCount === 0) return { ok: false, reason: 'SOCIAL CHECK REQUIRED' };
             return { ok: true };
         }
 
         // v3.0: Get tab category for a token
         function getTokenTab(token) {
+            const sp = token.socialPresence || {};
+            const socialCount = (sp.x ? 1 : 0) + (sp.telegram ? 1 : 0) + (sp.website ? 1 : 0);
+
+            // Dynamic unreject if user checks a social link
+            if (token.rejected && token.rejectionReason === 'NO_SOCIALS' && socialCount > 0) {
+                token.rejected = false;
+                token.rejectionReason = null;
+            }
+
             if (token.rejected) return 'hidden';
+
+            const platform = token.platformInfo?.platform || '';
+            const isPump = platform === 'pump.fun' || platform === 'pumpswap';
+
+            // Auto-hide pump.fun/pumpswap tokens with 0 verified socials
+            if (socialCount === 0 && isPump) {
+                token.rejected = true;
+                token.rejectionReason = 'NO_SOCIALS';
+                return 'hidden';
+            }
+
             if (token.score.total >= 65) return 'tradeable';
             if (token.score.total >= 50) return 'watchlist';
             return 'hidden';

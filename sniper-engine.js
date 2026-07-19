@@ -385,14 +385,21 @@ const SniperEngine = (() => {
         if (!result || !result.value) return null;
 
         const holders = result.value;
-        const totalFromTop = holders.reduce((sum, h) => sum + (h.uiAmount || 0), 0);
+
+        // Helper to extract human-readable token amount safely
+        const getUiAmount = (h) => {
+            if (h.uiAmount !== null && h.uiAmount !== undefined) return h.uiAmount;
+            return parseFloat(h.uiAmountString) || 0;
+        };
+
+        const totalFromTop = holders.reduce((sum, h) => sum + getUiAmount(h), 0);
 
         // Check top holder concentration
         const topHolder = holders[0];
-        const topHolderPct = totalFromTop > 0 ? ((topHolder?.uiAmount || 0) / totalFromTop) * 100 : 0;
+        const topHolderPct = totalFromTop > 0 ? (getUiAmount(topHolder) / totalFromTop) * 100 : 0;
 
         // Count how many unique holders in top accounts
-        const uniqueHolders = holders.filter(h => (h.uiAmount || 0) > 0).length;
+        const uniqueHolders = holders.filter(h => getUiAmount(h) > 0).length;
 
         // Estimate pool reserves to detect and skip LP vault
         let estimatedPoolReserves = 0;
@@ -404,7 +411,7 @@ const SniperEngine = (() => {
         let minDiff = Infinity;
         if (estimatedPoolReserves > 0) {
             for (let i = 0; i < holders.length; i++) {
-                const diff = Math.abs((holders[i].uiAmount || 0) - estimatedPoolReserves);
+                const diff = Math.abs(getUiAmount(holders[i]) - estimatedPoolReserves);
                 if (diff < minDiff) {
                     minDiff = diff;
                     lpIndex = i;
@@ -417,7 +424,7 @@ const SniperEngine = (() => {
         let whaleAddress = null;
         for (let i = 0; i < holders.length; i++) {
             if (i === lpIndex) continue;
-            const pct = totalFromTop > 0 ? ((holders[i].uiAmount || 0) / totalFromTop) * 100 : 0;
+            const pct = totalFromTop > 0 ? (getUiAmount(holders[i]) / totalFromTop) * 100 : 0;
             if (pct > maxNonLpHolderPct) {
                 maxNonLpHolderPct = pct;
                 whaleAddress = holders[i].address;
