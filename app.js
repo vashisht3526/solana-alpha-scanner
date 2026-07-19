@@ -2349,6 +2349,149 @@
 
         const dbStatusEl = document.getElementById('radar-outcome-badge');
 
+        // v3.0: Local Workspace Directory Syncing variables
+        let workspaceHandle = null;
+        const btnSyncWorkspace = document.getElementById('btn-sync-workspace');
+        const syncStatusDot = document.getElementById('sync-status-dot');
+        const syncStatusText = document.getElementById('sync-status-text');
+
+        function updateSyncUI(connected) {
+            if (!syncStatusDot || !syncStatusText || !btnSyncWorkspace) return;
+            if (connected) {
+                syncStatusDot.style.background = '#14F195'; // Green
+                syncStatusText.textContent = 'Synced';
+                btnSyncWorkspace.style.borderColor = 'rgba(20, 241, 149, 0.4)';
+                btnSyncWorkspace.style.background = 'rgba(20, 241, 149, 0.08)';
+                btnSyncWorkspace.style.color = '#14F195';
+            } else {
+                syncStatusDot.style.background = '#6B7280'; // Grey
+                syncStatusText.textContent = 'Link Workspace';
+                btnSyncWorkspace.style.borderColor = 'rgba(153, 69, 255, 0.3)';
+                btnSyncWorkspace.style.background = 'rgba(153, 69, 255, 0.1)';
+                btnSyncWorkspace.style.color = '#9945FF';
+            }
+        }
+
+        async function verifyPermission(fileHandle, readWrite) {
+            const options = {};
+            if (readWrite) {
+                options.mode = 'readwrite';
+            }
+            if ((await fileHandle.queryPermission(options)) === 'granted') {
+                return true;
+            }
+            if ((await fileHandle.requestPermission(options)) === 'granted') {
+                return true;
+            }
+            return false;
+        }
+
+        async function linkWorkspaceFolder() {
+            try {
+                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                if (handle) {
+                    workspaceHandle = handle;
+                    // Save handle in IndexedDB
+                    if (typeof ScannerDB !== 'undefined') {
+                        await ScannerDB.put('settings', { id: 'workspaceDirectoryHandle', handle: handle });
+                    }
+                    updateSyncUI(true);
+                    toast('🔌 Local workspace linked successfully!', 'success');
+                    // Sync immediately on link
+                    syncWorkspaceData();
+                }
+            } catch (err) {
+                console.warn('Workspace link cancelled or failed:', err.message);
+                updateSyncUI(false);
+            }
+        }
+
+        async function restoreWorkspaceLink() {
+            if (typeof ScannerDB === 'undefined') return;
+            try {
+                const record = await ScannerDB.get('settings', 'workspaceDirectoryHandle');
+                if (record && record.handle) {
+                    const handle = record.handle;
+                    const permission = await handle.queryPermission({ mode: 'readwrite' });
+                    if (permission === 'granted') {
+                        workspaceHandle = handle;
+                        updateSyncUI(true);
+                        console.log('🔌 [DB] Restored workspace folder permission without prompt');
+                    } else {
+                        // Keep handle in memory but keep UI greyed out until verified
+                        workspaceHandle = handle;
+                        updateSyncUI(false);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to restore workspace link:', err.message);
+            }
+        }
+
+        async function syncWorkspaceData() {
+            if (!workspaceHandle) return;
+            try {
+                // Verify we have active write permissions
+                const permission = await workspaceHandle.queryPermission({ mode: 'readwrite' });
+                if (permission !== 'granted') {
+                    // Fail silently in background loops rather than spamming browser popups
+                    return;
+                }
+
+                updateSyncUI(true);
+
+                // Fetch data from IndexedDB
+                const trades = await ScannerDB.getAll('trades') || [];
+                const outcomes = await ScannerDB.getAll('outcomes') || [];
+                const alerts = await ScannerDB.getAll('alerts') || [];
+
+                // Get or create data/ directory
+                let dataDirHandle;
+                try {
+                    dataDirHandle = await workspaceHandle.getDirectoryHandle('data', { create: true });
+                } catch (e) {
+                    console.error('Failed to create data directory:', e);
+                    return;
+                }
+
+                // Helper function to write files safely
+                const writeJsonFile = async (fileName, data) => {
+                    const fileHandle = await dataDirHandle.getFileHandle(fileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(JSON.stringify(data, null, 2));
+                    await writable.close();
+                };
+
+                // Export database tables
+                await writeJsonFile('trades_sync.json', trades);
+                await writeJsonFile('outcomes_sync.json', outcomes);
+                await writeJsonFile('alerts_sync.json', alerts);
+
+                console.log(`🔌 [Sync] Exported ${trades.length} trades, ${outcomes.length} outcomes, ${alerts.length} alerts to local workspace`);
+            } catch (err) {
+                console.warn('🔌 [Sync] Database syncing failed:', err.message);
+                updateSyncUI(false);
+            }
+        }
+
+        // Add event listener for the link button
+        if (btnSyncWorkspace) {
+            btnSyncWorkspace.addEventListener('click', async () => {
+                if (workspaceHandle) {
+                    const granted = await verifyPermission(workspaceHandle, true);
+                    if (granted) {
+                        updateSyncUI(true);
+                        toast('🔌 Workspace connection active!', 'success');
+                        syncWorkspaceData();
+                    } else {
+                        linkWorkspaceFolder();
+                    }
+                } else {
+                    linkWorkspaceFolder();
+                }
+            });
+        }
+
         async function initDatabase() {
             if (typeof ScannerDB === 'undefined') return;
             try {
@@ -2405,6 +2548,9 @@
                     PaperTrader.loadTradeState(restoredTradeState);
                     console.log(`📦 [DB] Restored paper trading state: ${restoredTradeState.balance?.toFixed(2)} SOL, ${restoredTradeState.positions.length} open, ${restoredTradeState.history.length} history`);
                 }
+                
+                // Try to restore previous workspace sync
+                await restoreWorkspaceLink();
             } catch (err) {
                 console.warn('📦 [DB] Init failed:', err.message);
             }
@@ -2474,6 +2620,9 @@
                 // Update UI with fresh stats
                 const stats = await ScannerDB.getStats();
                 updateDbStatus(stats);
+
+                // Auto-sync database state to workspace directory
+                await syncWorkspaceData();
             } catch (err) {
                 console.warn('📦 [DB] Auto-persist failed:', err.message);
             }
