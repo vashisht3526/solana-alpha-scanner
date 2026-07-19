@@ -504,13 +504,17 @@
                     <span class="stat-value" id="sniper-filtered-today" style="color:#FF3B30;">0</span>
                 </div>
                 <div class="sniper-stat">
+                    <span class="stat-label">Queue</span>
+                    <span class="stat-value" id="sniper-queue-size" style="color:#00D1FF;">0</span>
+                </div>
+                <div class="sniper-stat">
                     <span class="stat-label">Last Scan</span>
                     <span class="stat-value" id="sniper-last-scan">—</span>
                 </div>
             </div>
 
             <!-- Sniper Controls -->
-            <div class="sniper-controls">
+            <div class="sniper-controls" style="margin-bottom:8px;">
                 <button id="btn-sniper-start" class="btn btn-primary">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
                     Start Sniper
@@ -525,6 +529,15 @@
                     <input type="text" id="sniper-manual-input" class="control-select compact" placeholder="Paste token address to snipe..." style="width:300px;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:0.7rem;">
                     <button id="btn-sniper-manual" class="btn btn-sm btn-accent">🎯 Snipe</button>
                 </div>
+            </div>
+
+            <!-- Worker Queue Concurrency Board -->
+            <div class="worker-board" id="worker-board" style="display: flex; gap: 8px; margin-bottom: 12px; font-size: 0.68rem; justify-content: flex-start; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 8px 12px;">
+                <span style="color: var(--text-muted); font-weight: bold; align-self: center;">Workers:</span>
+                <span class="badge" id="worker-0-badge" style="background:rgba(255,255,255,0.04); color:var(--text-muted); border:1px solid rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;">W1: Offline</span>
+                <span class="badge" id="worker-1-badge" style="background:rgba(255,255,255,0.04); color:var(--text-muted); border:1px solid rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;">W2: Offline</span>
+                <span class="badge" id="worker-2-badge" style="background:rgba(255,255,255,0.04); color:var(--text-muted); border:1px solid rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;">W3: Offline</span>
+                <span id="queue-dropped-indicator" style="color: #FF3B30; font-weight: bold; align-self: center; margin-left: auto; display: none;">⚠️ Queue Drops: <span id="queue-dropped-count">0</span></span>
             </div>
 
             <!-- v3.0: 3-Tab System -->

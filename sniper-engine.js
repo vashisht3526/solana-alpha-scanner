@@ -107,6 +107,9 @@ const SniperEngine = (() => {
         totalAlerts: 0,
         onUpdate: null,             // UI callback
         onAlert: null,              // Alert callback
+        discoveryQueue: [],          // v3.0: queue of pending tokens to analyze
+        activeWorkers: [],           // v3.0: concurrency tracking statuses
+        droppedCount: 0,             // v3.0: dropped low-priority tokens count
     };
 
     // ——— Utility ———
@@ -796,29 +799,153 @@ const SniperEngine = (() => {
             // Discover new tokens
             const newTokens = await discoverNewTokens();
 
-            // Analyze each new token
-            let analyzed = 0;
+            // Push to priority discovery queue
             for (const token of newTokens) {
-                if (!state.isRunning) break;
-                if (state.trackedTokens.size >= SNIPER_CONFIG.MAX_TRACKED) {
-                    // Remove oldest/lowest-scored tokens
-                    pruneTrackedTokens();
-                }
-
-                const result = await analyzeToken(token.address, token.source);
-                if (result) {
-                    analyzed++;
-                    state.totalScanned++;
-                }
-                await sleep(300); // Don't hammer DexScreener
+                enqueueToken(token.address, token.source, token.symbol);
             }
-
-            sniperLog(`✅ Scan complete: ${analyzed} tokens analyzed, ${state.sniperAlerts.length} alerts active`, 'success');
+            
+            sniperLog(`✅ Scan queued: ${newTokens.length} tokens added, ${state.discoveryQueue.length} pending in queue`, 'success');
         } catch (err) {
             sniperLog(`❌ Scan error: ${err.message}`, 'error');
         }
 
         if (state.onUpdate) state.onUpdate();
+    }
+
+    // v3.0: Synchronously filters and enqueues newly discovered tokens
+    function enqueueToken(address, source, symbol = 'UNKNOWN', createdAt = Date.now()) {
+        if (!state.isRunning) return;
+
+        // 1. Deduplication
+        if (state.trackedTokens.has(address) || state.rejectedTokens.has(address)) {
+            return;
+        }
+        if (state.discoveryQueue.some(t => t.address === address)) {
+            return;
+        }
+
+        // 2. Calculate Priority (P0: pump.fun <2m, P1: pumpswap <15m, P2: raydium <30m, P3: others)
+        const ageMin = (Date.now() - createdAt) / 1000 / 60;
+        let priority = 3; // P3
+
+        let platform = source;
+        if (source === 'pumpportal_ws') platform = 'pump.fun';
+        else if (source.includes('boosted')) platform = 'dex_boosted';
+
+        if (platform === 'pump.fun' && ageMin < 2) priority = 0;
+        else if (platform === 'pumpswap' && ageMin < 15) priority = 1;
+        else if (source.includes('raydium') && ageMin < 30) priority = 2;
+
+        const entry = {
+            address,
+            symbol,
+            source,
+            platform,
+            priority,
+            createdAt,
+            queuedAt: Date.now()
+        };
+
+        // 3. Gatekeeper Pre-Filtering
+        if (platform === 'pumpswap' && ageMin > 120) {
+            state.rejectedTokens.set(address, {
+                tokenData: entry,
+                reason: 'Pumpswap launch >120m old',
+                rejectedAt: Date.now()
+            });
+            state.filteredToday++;
+            if (state.onUpdate) state.onUpdate();
+            return;
+        }
+
+        // 4. Queue Cap (Max 100 tokens, drop lowest priority)
+        const MAX_QUEUE_SIZE = 100;
+        if (state.discoveryQueue.length >= MAX_QUEUE_SIZE) {
+            state.discoveryQueue.sort((a, b) => a.priority - b.priority);
+            const dropped = state.discoveryQueue.pop(); // Remove lowest priority
+            if (dropped) {
+                state.droppedCount++;
+                state.rejectedTokens.set(dropped.address, {
+                    tokenData: dropped,
+                    reason: 'Queue size overflow limit (dropped)',
+                    rejectedAt: Date.now()
+                });
+            }
+        }
+
+        state.discoveryQueue.push(entry);
+        state.discoveryQueue.sort((a, b) => a.priority - b.priority);
+        if (state.onUpdate) state.onUpdate();
+    }
+
+    // v3.0: Worker runner function pulling from priority queue
+    async function processQueueWorker(workerId) {
+        state.activeWorkers[workerId] = { id: workerId, status: 'idle', currentToken: null };
+
+        while (state.isRunning) {
+            try {
+                if (state.discoveryQueue.length === 0) {
+                    state.activeWorkers[workerId].status = 'idle';
+                    state.activeWorkers[workerId].currentToken = null;
+                    await sleep(200);
+                    continue;
+                }
+
+                // Pull top priority item
+                state.discoveryQueue.sort((a, b) => a.priority - b.priority);
+                const token = state.discoveryQueue.shift();
+                if (!token) continue;
+
+                state.activeWorkers[workerId].status = 'busy';
+                state.activeWorkers[workerId].currentToken = token.symbol;
+                if (state.onUpdate) state.onUpdate();
+
+                let success = false;
+                let attempt = 0;
+                const maxAttempts = 4;
+                const backoffs = [0, 1000, 3000, 10000];
+
+                while (attempt < maxAttempts && state.isRunning) {
+                    try {
+                        attempt++;
+                        if (backoffs[attempt - 1] > 0) {
+                            await sleep(backoffs[attempt - 1]);
+                        }
+
+                        if (state.trackedTokens.size >= SNIPER_CONFIG.MAX_TRACKED) {
+                            pruneTrackedTokens();
+                        }
+
+                        const result = await analyzeToken(token.address, token.source);
+                        if (result) {
+                            state.totalScanned++;
+                            success = true;
+                            break;
+                        }
+                    } catch (err) {
+                        console.warn(`[Worker ${workerId}] Analysis attempt ${attempt} failed for ${token.symbol}:`, err.message);
+                    }
+                }
+
+                if (!success && state.isRunning) {
+                    state.rejectedTokens.set(token.address, {
+                        tokenData: token,
+                        reason: 'Failed to enrich API details after 4 retries',
+                        rejectedAt: Date.now()
+                    });
+                    state.filteredToday++;
+                    sniperLog(`❌ Worker ${workerId} dropped token ${token.symbol} after max retries`, 'warning');
+                }
+
+                if (state.onUpdate) state.onUpdate();
+                await sleep(300);
+            } catch (err) {
+                console.error(`🚨 [Worker ${workerId}] Exception:`, err);
+                await sleep(1000);
+            }
+        }
+
+        state.activeWorkers[workerId] = { id: workerId, status: 'offline', currentToken: null };
     }
 
     async function refreshPrices() {
@@ -922,8 +1049,8 @@ const SniperEngine = (() => {
                         const mint = data.mint;
                         if (!state.trackedTokens.has(mint)) {
                             sniperLog(`✨ WebSocket mint: ${data.tokenSymbol || 'UNKNOWN'} | ${data.tokenName || 'Untitled'} | Mint: ${shortAddr(mint)}`, 'success');
-                            // Instantly analyze the token
-                            await analyzeToken(mint, 'pumpportal_ws');
+                            // v3.0: Enqueue non-blockingly
+                            enqueueToken(mint, 'pumpportal_ws', data.tokenSymbol || 'UNKNOWN');
                         }
                     }
                 } catch(e) {
@@ -954,6 +1081,14 @@ const SniperEngine = (() => {
         if (state.isRunning) return;
         state.isRunning = true;
         sniperLog('🚀 Sniper Engine started — monitoring new token launches...', 'info');
+
+        // Reset queue & spawn workers
+        state.discoveryQueue = [];
+        state.activeWorkers = [];
+        state.droppedCount = 0;
+        for (let i = 0; i < 3; i++) {
+            processQueueWorker(i);
+        }
 
         // Connect real-time WebSocket feed
         initWebSocket();
@@ -988,6 +1123,9 @@ const SniperEngine = (() => {
         state.scanHistory = [];
         state.totalScanned = 0;
         state.totalAlerts = 0;
+        state.discoveryQueue = [];
+        state.activeWorkers = [];
+        state.droppedCount = 0;
         if (state.onUpdate) state.onUpdate();
     }
 
@@ -1038,6 +1176,10 @@ const SniperEngine = (() => {
             // v3.0: Rejection tracking
             rejectedTokens: [...state.rejectedTokens.values()],
             filteredToday: state.filteredToday,
+            // v3.0: Queue and Worker stats
+            discoveryQueue: [...state.discoveryQueue],
+            activeWorkers: [...state.activeWorkers],
+            droppedCount: state.droppedCount,
         };
     }
 

@@ -2161,6 +2161,46 @@
             const filteredEl = document.getElementById('sniper-filtered-today');
             if (filteredEl) filteredEl.textContent = s.filteredToday || 0;
 
+            // v3.0: Update queue size
+            const queueSizeEl = document.getElementById('sniper-queue-size');
+            if (queueSizeEl) queueSizeEl.textContent = s.discoveryQueue ? s.discoveryQueue.length : 0;
+
+            // v3.0: Update dropped queue count
+            const queueDropIndicator = document.getElementById('queue-dropped-indicator');
+            const queueDropCountEl = document.getElementById('queue-dropped-count');
+            if (queueDropIndicator && queueDropCountEl) {
+                if (s.droppedCount > 0) {
+                    queueDropIndicator.style.display = 'inline-block';
+                    queueDropCountEl.textContent = s.droppedCount;
+                } else {
+                    queueDropIndicator.style.display = 'none';
+                }
+            }
+
+            // v3.0: Update worker badges
+            const workers = s.activeWorkers || [];
+            for (let i = 0; i < 3; i++) {
+                const badge = document.getElementById(`worker-${i}-badge`);
+                if (!badge) continue;
+                const w = workers[i];
+                if (w && w.status === 'busy' && s.isRunning) {
+                    badge.style.background = 'rgba(20, 241, 149, 0.1)';
+                    badge.style.color = '#14F195';
+                    badge.style.borderColor = 'rgba(20, 241, 149, 0.2)';
+                    badge.textContent = `W${i+1}: ${w.currentToken || 'Busy'}`;
+                } else if (s.isRunning) {
+                    badge.style.background = 'rgba(0, 209, 255, 0.08)';
+                    badge.style.color = '#00D1FF';
+                    badge.style.borderColor = 'rgba(0, 209, 255, 0.15)';
+                    badge.textContent = `W${i+1}: Idle`;
+                } else {
+                    badge.style.background = 'rgba(255, 255, 255, 0.03)';
+                    badge.style.color = 'var(--text-muted)';
+                    badge.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+                    badge.textContent = `W${i+1}: Offline`;
+                }
+            }
+
             // Status badge
             if (s.isRunning) {
                 sniperEls.statusBadge.textContent = '🟢 SCANNING';
