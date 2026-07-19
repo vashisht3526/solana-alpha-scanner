@@ -2049,10 +2049,10 @@
         // v3.0: Determine if a token is tradeable based on score + social checks
         function isTokenTradeable(token) {
             if (token.rejected) return { ok: false, reason: 'Token rejected' };
-            if (token.score.total < 50) return { ok: false, reason: `Score ${token.score.total} < 50` };
+            if (token.score.total < 65) return { ok: false, reason: `Score < 65` };
             const sp = token.socialPresence || {};
             const socialCount = (sp.x ? 1 : 0) + (sp.telegram ? 1 : 0) + (sp.website ? 1 : 0);
-            if (socialCount === 0 && token.score.total < 65) return { ok: false, reason: 'SOCIAL CHECK REQUIRED' };
+            if (socialCount === 0) return { ok: false, reason: 'SOCIAL CHECK REQUIRED' };
             return { ok: true };
         }
 
@@ -2081,11 +2081,16 @@
             const tierBadge = token.score.total >= 70 ? '🧱 A-TIER' : token.score.total >= 60 ? '🧲 B-TIER' : token.score.total >= 50 ? '🧳 C-TIER' : '';
 
             // v3.0: Rejection banner or Safe badge
-            const statusBanner = isRejected
-                ? `<div class="sniper-rejection-banner">⛔ REJECTED: ${token.rejectionReason || 'Unknown'}</div>`
-                : token.safetyGate?.pass
-                    ? `<div class="sniper-safe-badge">🛡️ SAFE ${tierBadge}</div>`
-                    : tierBadge ? `<div class="sniper-safe-badge">${tierBadge}</div>` : '';
+            let statusBanner = '';
+            if (isRejected || token.score.total < 50) {
+                statusBanner = `<div class="sniper-rejection-banner">⛔ REJECTED: ${token.rejectionReason || 'Score < 50'}</div>`;
+            } else if (token.safetyGate?.pass && token.score.total >= 60) {
+                statusBanner = `<div class="sniper-safe-badge" style="background: rgba(20, 241, 149, 0.12); color: #14F195; border-color: rgba(20, 241, 149, 0.3);">🛡️ SAFE ${tierBadge}</div>`;
+            } else if (token.safetyGate?.pass && token.score.total >= 50 && token.score.total < 60) {
+                statusBanner = `<div class="sniper-safe-badge" style="background: rgba(255, 184, 0, 0.12); color: #FFB800; border-color: rgba(255, 184, 0, 0.3);">⚠️ PASSABLE ${tierBadge}</div>`;
+            } else {
+                statusBanner = tierBadge ? `<div class="sniper-safe-badge">${tierBadge}</div>` : '';
+            }
 
             // v3.0: Platform tag
             const platformTag = `<span class="sniper-platform-tag" style="background:${platformInfo.color}22;color:${platformInfo.color};border:1px solid ${platformInfo.color}44;">${platformInfo.label}</span>`;
@@ -2244,7 +2249,15 @@
             }
 
             // Render token cards
-            if (displayTokens.length > 0) {
+            if (activeSniperTab === 'hidden') {
+                sniperEls.grid.innerHTML = `
+                    <div class="sniper-placeholder" style="grid-column: 1 / -1; padding: 40px 20px;">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" opacity="0.3" style="margin: 0 auto 12px;"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>
+                        <p style="font-weight: bold; margin-bottom: 4px;">Low-Score & Rejected Tokens Hidden</p>
+                        <p style="font-size: 0.72rem; opacity: 0.6; max-width: 320px; margin: 0 auto;">Lunches scoring below 50 or rejected by safety checks are hidden from grid view to prevent noise. Click "Tradeable" or "Watchlist" to inspect qualified tokens.</p>
+                    </div>
+                `;
+            } else if (displayTokens.length > 0) {
                 sniperEls.grid.innerHTML = displayTokens.slice(0, 30).map(renderSniperCard).join('');
             } else if (!s.isRunning) {
                 sniperEls.grid.innerHTML = `

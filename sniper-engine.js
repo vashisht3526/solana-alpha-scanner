@@ -379,7 +379,7 @@ const SniperEngine = (() => {
     //  ON-CHAIN ANALYSIS — Get holder data, top holders, dev wallet behavior
     // ======================================================================
 
-    async function getTokenHolders(tokenAddress) {
+    async function getTokenHolders(tokenAddress, tokenData) {
         // Use Helius getTokenLargestAccounts for top holder distribution
         const result = await heliusRpc('getTokenLargestAccounts', [tokenAddress]);
         if (!result || !result.value) return null;
@@ -387,12 +387,42 @@ const SniperEngine = (() => {
         const holders = result.value;
         const totalFromTop = holders.reduce((sum, h) => sum + (h.uiAmount || 0), 0);
 
-        // Check top holder concentration (rug signal if top holder has >15%)
+        // Check top holder concentration
         const topHolder = holders[0];
         const topHolderPct = totalFromTop > 0 ? ((topHolder?.uiAmount || 0) / totalFromTop) * 100 : 0;
 
         // Count how many unique holders in top accounts
         const uniqueHolders = holders.filter(h => (h.uiAmount || 0) > 0).length;
+
+        // Estimate pool reserves to detect and skip LP vault
+        let estimatedPoolReserves = 0;
+        if (tokenData && tokenData.priceUsd > 0) {
+            estimatedPoolReserves = (tokenData.liquidity / 2) / tokenData.priceUsd;
+        }
+
+        let lpIndex = -1;
+        let minDiff = Infinity;
+        if (estimatedPoolReserves > 0) {
+            for (let i = 0; i < holders.length; i++) {
+                const diff = Math.abs((holders[i].uiAmount || 0) - estimatedPoolReserves);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    lpIndex = i;
+                }
+            }
+        }
+
+        // Find largest non-LP wallet
+        let maxNonLpHolderPct = 0;
+        let whaleAddress = null;
+        for (let i = 0; i < holders.length; i++) {
+            if (i === lpIndex) continue;
+            const pct = totalFromTop > 0 ? ((holders[i].uiAmount || 0) / totalFromTop) * 100 : 0;
+            if (pct > maxNonLpHolderPct) {
+                maxNonLpHolderPct = pct;
+                whaleAddress = holders[i].address;
+            }
+        }
 
         return {
             topHolders: holders.slice(0, 10),
@@ -400,6 +430,8 @@ const SniperEngine = (() => {
             uniqueTopHolders: uniqueHolders,
             concentration: topHolderPct > 20 ? 'high' : topHolderPct > 10 ? 'medium' : 'low',
             totalFromTop,
+            maxNonLpHolderPct,
+            whaleAddress
         };
     }
 
@@ -697,20 +729,25 @@ const SniperEngine = (() => {
         const tokenData = await enrichTokenData(tokenAddress);
         if (!tokenData) return null;
 
-        // Filter: skip if too old or too low liquidity
+        // Filter: skip if too old
         if (tokenData.ageHours && tokenData.ageHours > SNIPER_CONFIG.MAX_AGE_HOURS) return null;
-        if (tokenData.liquidity < SNIPER_CONFIG.MIN_LIQUIDITY) return null;
+        if (tokenData.liquidity < 500) {
+            return rejectToken(tokenData, `LOW_LIQUIDITY: $${tokenData.liquidity.toFixed(0)} < $500`, source);
+        }
 
         // v3.0: Step 1a — Platform Detection
         tokenData.platformInfo = detectPlatform(tokenData.dexId, source, tokenData.ageMs);
 
         // v3.0: Step 1b — Platform-based auto-rejection
-        // NOTE: Relaxed from 60min to 120min — DexScreener discovers tokens late,
-        // so 60min was rejecting almost everything. Keep penalty but only reject truly dead ones.
-        if (tokenData.platformInfo.platform === 'pumpswap' && tokenData.platformInfo.phase === 'post-grad-dump') {
-            const ageMin = tokenData.ageMinutes || 999;
-            if (ageMin > 120) {
-                return rejectToken(tokenData, 'LATE: Pumpswap >2h — dump phase', source);
+        if (tokenData.platformInfo?.platform === 'pumpswap') {
+            if (tokenData.platformInfo.phase === 'post-grad-dump') {
+                const ageMin = tokenData.ageMinutes || 999;
+                if (ageMin > 120) {
+                    return rejectToken(tokenData, 'LATE: Pumpswap >2h — dump phase', source);
+                }
+            }
+            if (tokenData.priceChange1h < -20) {
+                return rejectToken(tokenData, `DUMPING: Pumpswap 1h change ${tokenData.priceChange1h}% < -20%`, source);
             }
         }
 
@@ -741,8 +778,12 @@ const SniperEngine = (() => {
         }
 
         // Step 2: Get holder distribution (async, may fail)
-        const holderData = await getTokenHolders(tokenAddress);
+        const holderData = await getTokenHolders(tokenAddress, tokenData);
         await sleep(SNIPER_CONFIG.HELIUS_DELAY);
+
+        if (holderData && holderData.maxNonLpHolderPct > 30) {
+            return rejectToken(tokenData, `CONCENTRATED: Whale holds ${holderData.maxNonLpHolderPct.toFixed(1)}% (max 30%)`, source);
+        }
 
         // Step 3: Check smart money matches
         const smartMoney = checkSmartMoney(tokenAddress);
