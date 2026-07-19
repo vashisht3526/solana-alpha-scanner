@@ -26,8 +26,8 @@ const SniperEngine = (() => {
         SOLSCAN_URL: 'https://solscan.io/token/',
         ARKHAM_URL: 'https://platform.arkhamintelligence.com/explorer/address/',
         // Engine settings
-        SCAN_INTERVAL: 8000,        // Scan for new tokens every 8s (was 20s)
-        PRICE_REFRESH: 12000,       // Refresh tracked token prices every 12s
+        SCAN_INTERVAL: 12000,        // Scan for new tokens every 12s (was 8s — stagger with price refresh)
+        PRICE_REFRESH: 8000,        // Refresh tracked token prices every 8s (more frequent = fresher data)
         MAX_TRACKED: 500,           // Max tokens to track simultaneously (was 100)
         MAX_AGE_HOURS: 72,          // Track tokens up to 72h old (was 48h)
         MIN_LIQUIDITY: 100,         // Min $100 liquidity (was $1000 — capture early pump.fun/organic launches)
@@ -702,10 +702,12 @@ const SniperEngine = (() => {
         tokenData.platformInfo = detectPlatform(tokenData.dexId, source, tokenData.ageMs);
 
         // v3.0: Step 1b — Platform-based auto-rejection
+        // NOTE: Relaxed from 60min to 120min — DexScreener discovers tokens late,
+        // so 60min was rejecting almost everything. Keep penalty but only reject truly dead ones.
         if (tokenData.platformInfo.platform === 'pumpswap' && tokenData.platformInfo.phase === 'post-grad-dump') {
             const ageMin = tokenData.ageMinutes || 999;
-            if (ageMin > 60) {
-                return rejectToken(tokenData, 'LATE: Pumpswap >60min — dump phase', source);
+            if (ageMin > 120) {
+                return rejectToken(tokenData, 'LATE: Pumpswap >2h — dump phase', source);
             }
         }
 

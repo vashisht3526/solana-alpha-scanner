@@ -2046,23 +2046,54 @@
             return 'd-tier';
         }
 
+        // v3.0: Determine if a token is tradeable based on score + social checks
+        function isTokenTradeable(token) {
+            if (token.rejected) return { ok: false, reason: 'Token rejected' };
+            if (token.score.total < 50) return { ok: false, reason: `Score ${token.score.total} < 50` };
+            const sp = token.socialPresence || {};
+            const socialCount = (sp.x ? 1 : 0) + (sp.telegram ? 1 : 0) + (sp.website ? 1 : 0);
+            if (socialCount === 0 && token.score.total < 65) return { ok: false, reason: 'SOCIAL CHECK REQUIRED' };
+            return { ok: true };
+        }
+
+        // v3.0: Get tab category for a token
+        function getTokenTab(token) {
+            if (token.rejected) return 'hidden';
+            if (token.score.total >= 65) return 'tradeable';
+            if (token.score.total >= 50) return 'watchlist';
+            return 'hidden';
+        }
+
+        // Track active sniper tab
+        let activeSniperTab = 'tradeable';
+
         function renderSniperCard(token) {
             const isRejected = token.rejected;
-            const tier = isRejected ? 'rejected' : getTierClass(token.score.total);
+            const tab = getTokenTab(token);
+            const tier = isRejected ? 'rejected' : tab === 'watchlist' ? 'watchlist' : tab === 'hidden' ? 'hidden-tier' : getTierClass(token.score.total);
             const priceChange = token.priceChange1h || 0;
             const changeClass = priceChange >= 0 ? 'positive' : 'negative';
             const changeSign = priceChange >= 0 ? '+' : '';
             const platformInfo = token.platformInfo || { label: token.dexId || 'DEX', color: '#6B7280' };
+            const tradeCheck = isTokenTradeable(token);
+
+            // v3.0: Tier badge
+            const tierBadge = token.score.total >= 70 ? '🧱 A-TIER' : token.score.total >= 60 ? '🧲 B-TIER' : token.score.total >= 50 ? '🧳 C-TIER' : '';
 
             // v3.0: Rejection banner or Safe badge
             const statusBanner = isRejected
                 ? `<div class="sniper-rejection-banner">⛔ REJECTED: ${token.rejectionReason || 'Unknown'}</div>`
                 : token.safetyGate?.pass
-                    ? `<div class="sniper-safe-badge">🛡️ SAFE</div>`
-                    : '';
+                    ? `<div class="sniper-safe-badge">🛡️ SAFE ${tierBadge}</div>`
+                    : tierBadge ? `<div class="sniper-safe-badge">${tierBadge}</div>` : '';
 
             // v3.0: Platform tag
             const platformTag = `<span class="sniper-platform-tag" style="background:${platformInfo.color}22;color:${platformInfo.color};border:1px solid ${platformInfo.color}44;">${platformInfo.label}</span>`;
+
+            // v3.0: Paper Trade button — blocked for rejected, low score, or no social
+            const tradeDisabled = !tradeCheck.ok;
+            const tradeLabel = tradeDisabled ? (tradeCheck.reason || 'Blocked') : '📋 Paper Trade';
+            const tradeHint = tab === 'watchlist' ? `<div class="sniper-watchlist-hint">⏳ Check again in 5 min</div>` : '';
 
             return `
                 <div class="sniper-card ${tier}">
@@ -2107,8 +2138,9 @@
                     <div class="sniper-tools">
                         <button class="sniper-tool-btn primary" onclick="window.__openTokenDetail('${token.address}')">🔬 View Details</button>
                         <button class="sniper-tool-btn" onclick="window.__openBubbleMaps('${token.address}','${token.symbol}')">🫧 BubbleMaps</button>
-                        <button class="sniper-tool-btn copy-trade${isRejected ? ' disabled' : ''}" onclick="${isRejected ? 'return false' : `window.__sniperCopyTrade('${token.address}')`}" ${isRejected ? 'disabled title="Token rejected — cannot paper trade"' : ''}>📋 Paper Trade</button>
+                        <button class="sniper-tool-btn copy-trade${tradeDisabled ? ' disabled' : ''}" onclick="${tradeDisabled ? 'return false' : `window.__sniperCopyTrade('${token.address}')`}" ${tradeDisabled ? `disabled title="${tradeLabel}"` : ''}>${tradeDisabled ? tradeLabel : '📋 Paper Trade'}</button>
                     </div>
+                    ${tradeHint}
                 </div>
             `;
         }
@@ -2145,11 +2177,28 @@
                 sniperEls.btnStop.disabled = true;
             }
 
-            // Sort and filter token cards
-            let displayTokens = [...s.tokens];
+            // v3.0: 3-Tab system — categorize tokens
+            const allTokens = [...s.tokens];
+            const tradeableTokens = allTokens.filter(t => !t.rejected && t.score.total >= 65);
+            const watchlistTokens = allTokens.filter(t => !t.rejected && t.score.total >= 50 && t.score.total < 65);
+            const hiddenTokens = allTokens.filter(t => t.rejected || t.score.total < 50);
+
+            // Render tab bar
+            const tabBar = document.getElementById('sniper-tab-bar');
+            if (tabBar) {
+                tabBar.innerHTML = `
+                    <button class="sniper-tab-btn tab-tradeable ${activeSniperTab === 'tradeable' ? 'active' : ''}" onclick="window.__setSniperTab('tradeable')">🟢 Tradeable <span class="sniper-tab-count">${tradeableTokens.length}</span></button>
+                    <button class="sniper-tab-btn tab-watchlist ${activeSniperTab === 'watchlist' ? 'active' : ''}" onclick="window.__setSniperTab('watchlist')">🟡 Watchlist <span class="sniper-tab-count">${watchlistTokens.length}</span></button>
+                    <button class="sniper-tab-btn tab-hidden ${activeSniperTab === 'hidden' ? 'active' : ''}" onclick="window.__setSniperTab('hidden')">⚫ Hidden <span class="sniper-tab-count">${hiddenTokens.length}</span></button>
+                `;
+            }
+
+            // Pick tokens for active tab
+            let displayTokens = activeSniperTab === 'tradeable' ? tradeableTokens :
+                                activeSniperTab === 'watchlist' ? watchlistTokens : hiddenTokens;
+
             const sniperSortBy = document.getElementById('sniper-sort-by')?.value || 'score';
             if (sniperSortBy === 'age') {
-                // Newest first (highest createdAt or analyzedAt)
                 displayTokens.sort((a, b) => (b.createdAt || b.analyzedAt || 0) - (a.createdAt || a.analyzedAt || 0));
             }
 
@@ -2163,6 +2212,8 @@
                         <p>Start the Sniper Engine to detect new token opportunities</p>
                     </div>
                 `;
+            } else {
+                sniperEls.grid.innerHTML = `<div class="sniper-placeholder"><p>No ${activeSniperTab} tokens yet — scanning...</p></div>`;
             }
 
             // Render feed
@@ -2174,6 +2225,12 @@
                 }).join('');
             }
         }
+
+        // v3.0: Tab switcher
+        window.__setSniperTab = (tab) => {
+            activeSniperTab = tab;
+            renderSniperDashboard();
+        };
 
         // Wire up sniper controls
         const sniperSortSelect = document.getElementById('sniper-sort-by');
@@ -2273,14 +2330,16 @@
                 toast('🎯 Sniper Engine auto-started — monitoring new launches');
                 console.log('🎯 [Sniper] Auto-started on page load');
 
-                // AUTO-START PaperTrader so Radar auto-trades can execute
+                // v3.0: AUTO-START PaperTrader in SNIPER FOLLOW mode
+                // This polls SniperEngine every 20s for tokens scoring >= minScore and auto-enters trades
+                // Previously used PaperTrader.start() which only set a flag but never polled!
                 if (typeof PaperTrader !== 'undefined') {
-                    PaperTrader.start();
+                    PaperTrader.startSniperFollow(50);
                     els.paperSection.style.display = 'block';
                     renderPaperTrading();
-                    console.log('📋 [PaperTrader] Auto-started for pattern-based auto-trading');
+                    console.log('🎯 [PaperTrader] Auto-Follow Sniper started — min score 50');
                 }
-            }, 2000);
+            }, 3000);
         }
 
         // ===================================================
@@ -2375,6 +2434,20 @@
                 if (typeof PaperTrader !== 'undefined') {
                     const metrics = PaperTrader.getMetrics();
                     await ScannerDB.persistTradeState(metrics);
+
+                    // v3.0: Persist trade logs to alerts store
+                    const logs = PaperTrader.tradeLogs || [];
+                    for (const log of logs.slice(0, 20)) {
+                        if (log._persisted) continue;
+                        await ScannerDB.saveAlert({
+                            id: `tl_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+                            type: log.type || 'trade_log',
+                            message: log.message,
+                            time: log.time,
+                            timestamp: Date.now(),
+                        });
+                        log._persisted = true;
+                    }
                 }
 
                 // Save cluster data

@@ -21,8 +21,8 @@ const PaperTrader = (() => {
         entryDelayMs: [2000, 5000],   // wait 2-5s after whale buy
         slippageRange: [0.5, 3],      // 0.5-3% simulated slippage
         latencyRange: [200, 800],     // 200-800ms simulated latency
-        minTokenAgeSec: 300,          // don't trade tokens < 5 min old
-        minLiquidityUsd: 15000,       // minimum $15k liquidity
+        minTokenAgeSec: 60,           // don't trade tokens < 1 min old (pump.fun tokens are seconds old)
+        minLiquidityUsd: 5000,        // minimum $5k liquidity (was $15K — too restrictive for new tokens)
         maxSimultaneousCopies: 3,     // max wallets buying same token at once
         maxCopiers: 100,              // ignore wallet if followed by >100 copiers
         liquidityDropExitPct: 50,     // auto-exit if liquidity drops 50%
@@ -855,6 +855,7 @@ const PaperTrader = (() => {
         setRenderCallback,
         checkRiskLimits,
         checkAntiTrapSafeguards,
+        get tradeLogs() { return tradeLogs; },
         get isRunning() { return portfolio.isRunning; },
         togglePause() {
             portfolio.isPaused = !portfolio.isPaused;
