@@ -22,7 +22,7 @@ const PaperTrader = (() => {
         slippageRange: [0.5, 3],      // 0.5-3% simulated slippage
         latencyRange: [200, 800],     // 200-800ms simulated latency
         minTokenAgeSec: 60,           // don't trade tokens < 1 min old (pump.fun tokens are seconds old)
-        minLiquidityUsd: 5000,        // minimum $5k liquidity (was $15K — too restrictive for new tokens)
+        minLiquidityUsd: 1000,        // minimum $1k liquidity (Plan v2: allows fresh grads & bonding tokens)
         maxSimultaneousCopies: 3,     // max wallets buying same token at once
         maxCopiers: 100,              // ignore wallet if followed by >100 copiers
         liquidityDropExitPct: 50,     // auto-exit if liquidity drops 50%
@@ -40,7 +40,7 @@ const PaperTrader = (() => {
             { pct: 300, sellFraction: 0.25, trailSL: 200 },
         ],
         breakevenTriggerPct: 30,      // move SL to breakeven at +30%
-        minScoreForEntry: 65,         // minimum sniper score to enter
+        minScoreForEntry: 55,         // Plan v2: minimum sniper score to enter (was 65)
     };
 
     // ——— State ———

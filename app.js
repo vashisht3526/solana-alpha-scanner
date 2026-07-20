@@ -2047,6 +2047,7 @@
         }
 
         // v3.0: Determine if a token is tradeable based on score + social checks
+        // Plan v2: Determine if a token is tradeable based on score + social checks
         function isTokenTradeable(token) {
             const sp = token.socialPresence || {};
             const socialCount = (sp.x ? 1 : 0) + (sp.telegram ? 1 : 0) + (sp.website ? 1 : 0);
@@ -2059,16 +2060,15 @@
 
             if (token.rejected) return { ok: false, reason: 'Token rejected' };
             
-            // Allow trading if standard >= 55 OR fresh graduate >= 65
-            const isFresh = token.score?.isFresh;
-            const threshold = isFresh ? 65 : 55;
-            if (token.score.total < threshold) return { ok: false, reason: `Score < ${threshold}` };
+            // Allow trading if score >= 55 (Plan v2 threshold)
+            const threshold = 55;
+            if ((token.score?.total || 0) < threshold) return { ok: false, reason: `Score < ${threshold}` };
             
             if (socialCount === 0) return { ok: false, reason: 'SOCIAL CHECK REQUIRED' };
             return { ok: true };
         }
 
-        // v3.0: Get tab category for a token
+        // Plan v2: Get tab category for a token (Thresholds: 55 Tradeable/Fresh, 45 Watchlist, 0 Hidden)
         function getTokenTab(token) {
             const sp = token.socialPresence || {};
             const socialCount = (sp.x ? 1 : 0) + (sp.telegram ? 1 : 0) + (sp.website ? 1 : 0);
@@ -2081,26 +2081,18 @@
 
             if (token.rejected) return 'hidden';
 
-            const platform = token.platformInfo?.platform || '';
-            const isPump = platform === 'pump.fun' || platform === 'pumpswap';
-
-            // Auto-hide pump.fun/pumpswap tokens with 0 verified socials
-            if (socialCount === 0 && isPump) {
-                token.rejected = true;
-                token.rejectionReason = 'NO_SOCIALS';
-                return 'hidden';
-            }
+            const scoreTotal = token.score?.total || 0;
 
             // Fresh Graduate track
             if (token.score?.isFresh) {
-                if (token.score.total >= 65) return 'fresh';
-                if (token.score.total >= 50) return 'watchlist';
+                if (scoreTotal >= 55) return 'fresh';
+                if (scoreTotal >= 45) return 'watchlist';
                 return 'hidden';
             }
 
             // Standard track
-            if (token.score.total >= 55) return 'tradeable';
-            if (token.score.total >= 45) return 'watchlist';
+            if (scoreTotal >= 55) return 'tradeable';
+            if (scoreTotal >= 45) return 'watchlist';
             return 'hidden';
         }
 
@@ -2397,6 +2389,12 @@
         }
 
         sniperEls.btnStart.addEventListener('click', () => {
+            console.log("=== SCANNER CONFIG ===");
+            console.log("TRADEABLE_THRESHOLD:", 55);
+            console.log("LIQUIDITY_FILTER_SKIP_BONDING:", true);
+            console.log("TRACK_CLASSIFIER:", "function");
+            console.log("======================");
+
             // Load alpha wallets from scan results if available
             if (state.results.length > 0) {
                 SniperEngine.loadAlphaWallets(state.results);

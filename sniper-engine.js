@@ -87,6 +87,31 @@ const SniperEngine = (() => {
         return { track: TRACKS.GRADUATED, priority: 2 }; // P2 (General DEX listings)
     }
 
+    // Plan v2: Track classifier for token objects
+    function classifyTrack(token) {
+        if (!token) return 'UNKNOWN';
+        const dexId = (token.dexId || '').toLowerCase();
+        const liq = parseFloat(token.liquidity) || 0;
+        if ((dexId === 'pumpfun' || token.source === 'pumpportal_ws') && liq === 0) {
+            return 'BONDING';      // pumpportal websocket feed
+        }
+        if (dexId === 'pumpswap' || dexId.includes('raydium') || dexId.includes('orca') || liq > 0) {
+            return 'GRADUATED';    // DEX-listed, has liquidity
+        }
+        if (token.source === 'pumpportal_ws') {
+            return 'BONDING';      // Fallback for pumpportal
+        }
+        return 'UNKNOWN';
+    }
+
+    // Plan v2: Skip liquidity filter for pre-graduation pump.fun / bonding track
+    function shouldCheckLiquidity(token) {
+        if (!token) return true;
+        const track = token.track || classifyTrack(token);
+        const isBondingCurve = track === 'BONDING' || (token.dexId === 'pumpfun' && (parseFloat(token.liquidity) || 0) === 0);
+        return !isBondingCurve; // false = skip liquidity check
+    }
+
     let ws = null;
 
     // ——— Platform Detection ———
@@ -424,6 +449,7 @@ const SniperEngine = (() => {
                         solanaFmUrl: SNIPER_CONFIG.SOLANAFM_URL + tokenAddress,
                         solscanUrl: SNIPER_CONFIG.SOLSCAN_URL + tokenAddress,
                         arkhamUrl: SNIPER_CONFIG.ARKHAM_URL + tokenAddress,
+                        track: classifyTrack({ dexId: p.dexId, liquidity: parseFloat(p.liquidity?.usd) || 0 })
                     };
                 }
             }
@@ -478,6 +504,7 @@ const SniperEngine = (() => {
                     solanaFmUrl: SNIPER_CONFIG.SOLANAFM_URL + tokenAddress,
                     solscanUrl: SNIPER_CONFIG.SOLSCAN_URL + tokenAddress,
                     arkhamUrl: SNIPER_CONFIG.ARKHAM_URL + tokenAddress,
+                    track: 'BONDING'
                 };
             }
         } catch (err) {
@@ -599,59 +626,56 @@ const SniperEngine = (() => {
     }
 
     // ======================================================================
-    // Phase 2: Detect if a listing is a Fresh Graduate
+    // Plan v2 Phase 2.1: Detect if a listing is a Fresh Graduate
     function isFreshGraduate(token) {
-        const platform = token.platformInfo?.platform || '';
-        if (platform !== 'pumpswap' && platform !== 'raydium') return false;
+        const ageMinutes = token.ageHours ? token.ageHours * 60 : (token.ageMs ? token.ageMs / 60000 : 99999);
+        const isGraduated = token.dexId === 'pumpswap' || token.dexId === 'raydium' || (token.platformInfo?.platform === 'pumpswap' || token.platformInfo?.platform === 'raydium');
+        const hasMinLiq = token.liquidity >= 1000;
+        const hasVolume = (token.volume1h || token.volume24h || 0) >= 5000;
+        const inMcapRange = token.marketCap >= 5000 && token.marketCap <= 500000;
         
-        const ageMin = token.ageMinutes || (token.ageMs ? token.ageMs / 60000 : 99999);
-        if (ageMin > FRESH_GRADUATE_CONFIG.maxAgeMinutes) return false;
-        if (token.liquidity < FRESH_GRADUATE_CONFIG.minLiquidity) return false;
-        if (token.volume24h < FRESH_GRADUATE_CONFIG.minVolume24h) return false;
-        if (token.marketCap < FRESH_GRADUATE_CONFIG.minMcap) return false;
-        if (token.marketCap > FRESH_GRADUATE_CONFIG.maxMcap) return false;
-
         const txns1h = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
         const totalTxns = (txns1h.buys || 0) + (txns1h.sells || 0);
-        if (totalTxns < FRESH_GRADUATE_CONFIG.minTxns1h) return false;
-
         const buyRatio = totalTxns > 0 ? (txns1h.buys || 0) / totalTxns : 0;
-        if (buyRatio < FRESH_GRADUATE_CONFIG.minBuyRatio) return false;
 
-        return true;
+        return isGraduated && ageMinutes < 15 && hasMinLiq && hasVolume && inMcapRange && buyRatio >= 0.55;
     }
 
-    // Phase 2: Compute Fresh Graduate Score (0-100)
+    // Plan v2 Phase 2.2: Fast-Track Scoring for Fresh Graduates (0-100)
     function scoreFreshGraduate(token) {
+        const ageMinutes = token.ageHours ? token.ageHours * 60 : (token.ageMs ? token.ageMs / 60000 : 0);
         const txns1h = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
         const totalTxns = (txns1h.buys || 0) + (txns1h.sells || 0);
         const buyRatio = totalTxns > 0 ? (txns1h.buys || 0) / totalTxns : 0;
-        const ageMin = token.ageMinutes || (token.ageMs ? token.ageMs / 60000 : 0);
+        const volumeIntensity = token.marketCap > 0 ? (token.volume1h || token.volume24h || 0) / token.marketCap : 0;
 
         let score = 0;
 
-        // Age: younger = better (0-15min window)
-        score += Math.max(0, 25 - ageMin) * 1.5; // 0-37.5 pts
-
-        // Volume intensity: vol/liquidity ratio
-        const volLiqRatio = token.liquidity > 0 ? token.volume24h / token.liquidity : 0;
-        score += Math.min(25, volLiqRatio * 5); // 0-25 pts
+        // Age: younger = higher score (decays fast)
+        if (ageMinutes < 5) score += 40;
+        else if (ageMinutes < 10) score += 30;
+        else if (ageMinutes < 15) score += 20;
 
         // Buy pressure
-        score += buyRatio * 25; // 0-25 pts
+        if (buyRatio >= 0.7) score += 25;
+        else if (buyRatio >= 0.55) score += 15;
 
-        // Momentum: price change 5m
-        const momentum = Math.abs(token.priceChange5m || 0);
-        score += Math.min(15, momentum * 0.5); // 0-15 pts
+        // Volume intensity
+        if (volumeIntensity > 2.0) score += 25;      // 2x mcap in volume
+        else if (volumeIntensity > 1.0) score += 15;
+        else if (volumeIntensity > 0.5) score += 10;
 
-        // Mcap zone: sweet spot $10K-$200K
-        if (token.marketCap >= 10000 && token.marketCap <= 200000) {
-            score += 10;
-        } else if (token.marketCap > 200000 && token.marketCap <= 500000) {
-            score += 5;
-        }
+        // Momentum (price change)
+        const momentum = token.priceChange1h || token.priceChange5m || 0;
+        if (momentum > 100) score += 15;
+        else if (momentum > 50) score += 10;
+        else if (momentum > 20) score += 5;
 
-        return Math.round(score);
+        // MCap sweet spot
+        if (token.marketCap >= 10000 && token.marketCap <= 50000) score += 10;
+        else if (token.marketCap >= 50000 && token.marketCap <= 200000) score += 5;
+
+        return Math.min(score, 100);
     }
 
     // Phase 3 Helpers for Optimized Scoring
@@ -986,9 +1010,8 @@ const SniperEngine = (() => {
         // Filter: skip if too old
         if (tokenData.ageHours && tokenData.ageHours > SNIPER_CONFIG.MAX_AGE_HOURS) return null;
         
-        // Phase 1B: Kill $500 liquidity gate for bonding curves (liquidity=0)
-        const classification = classifyToken(source);
-        if (classification.track === TRACKS.GRADUATED && tokenData.liquidity < 500) {
+        // Plan v2 Phase 1.1: Skip liquidity gate for bonding curve tokens
+        if (shouldCheckLiquidity(tokenData) && tokenData.liquidity < 500) {
             return rejectToken(tokenData, `LOW_LIQUIDITY: $${tokenData.liquidity.toFixed(0)} < $500`, source);
         }
 
@@ -1065,16 +1088,17 @@ const SniperEngine = (() => {
         // Step 3: Check smart money matches
         const smartMoney = checkSmartMoney(tokenAddress, holderData);
 
-        // Step 4: Calculate sniper score (Phase 2 Custom path or Standard)
+        // Step 4: Calculate sniper score (Plan v2 Dual Scoring Path)
         let score;
         if (isFreshGraduate(tokenData)) {
-            const freshScore = scoreFreshGraduate(tokenData);
+            const fgScore = scoreFreshGraduate(tokenData);
             score = {
-                total: freshScore,
-                scores: { freshGraduate: freshScore },
-                grade: freshScore >= 65 ? '🚀 FRESH' : freshScore >= 50 ? '🟡 FRESH_WATCH' : '⛔ REJECTED',
-                isSniper: freshScore >= 65,
-                isAlert: freshScore >= 65,
+                total: fgScore,
+                scores: { freshGraduate: fgScore },
+                grade: fgScore >= 55 ? '⚡ FRESH-GRAD' : fgScore >= 45 ? '👀 WATCH' : '⛔ LOW',
+                isSniper: fgScore >= 55,
+                isAlert: fgScore >= 45,
+                track: 'FRESH_GRADUATE',
                 isFresh: true
             };
         } else {
