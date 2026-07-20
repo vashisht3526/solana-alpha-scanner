@@ -36,18 +36,56 @@ const SniperEngine = (() => {
 
     // ——— Sniper Score Weights (tuned by pattern analysis) ———
     const SCORE_WEIGHTS = {
-        AGE_SWEET_SPOT: 15,         // INCREASED — strongest predictor
-        VOLUME_MCAP_RATIO: 10,      // DECREASED — weak predictor, was overweighted
-        LIQUIDITY_HEALTH: 8,        // DECREASED — near-zero correlation
-        PRICE_MOMENTUM: 15,         // INCREASED — 2nd strongest predictor
-        HOLDER_GROWTH: 10,          // INCREASED — moderate predictor
-        BUY_SELL_RATIO: 8,          // DECREASED — weak predictor
-        SMART_WALLET_MATCH: 10,     // DECREASED — currently broken (0/110 matches)
-        MCAP_ZONE: 14,              // INCREASED — moderate predictor with sweet spot
-        DEX_BOOST: 5,               // KEPT — negative correlation
-        ANTI_RUG: 0,                // v3.0: DISABLED — inverted/broken (antiRug=5 has 0% multibagger rate)
-        SOCIAL_PRESENCE: 5,         // v3.0: NEW — redistributed from AntiRug, manual checkbox scoring
+        AGE_SWEET_SPOT: 15,
+        VOLUME_MCAP_RATIO: 10,
+        LIQUIDITY_HEALTH: 8,
+        PRICE_MOMENTUM: 25,         // INCREASED for early explosive momentum (Phase 3D)
+        HOLDER_GROWTH: 10,
+        BUY_SELL_RATIO: 15,          // INCREASED to reward high buy ratio (Phase 3B)
+        SMART_WALLET_MATCH: 10,
+        MCAP_ZONE: 15,              // INCREASED to reward lower MCaps on grads (Phase 3C)
+        DEX_BOOST: 5,
+        ANTI_RUG: 0,
+        SOCIAL_PRESENCE: 5,
     };
+
+    // Phase 1A: Dual-Track Ingestion Tracks
+    const TRACKS = {
+        GRADUATED: 'graduated',
+        BONDING: 'bonding'
+    };
+
+    // Phase 2: Fresh Graduate Constraints
+    const FRESH_GRADUATE_CONFIG = {
+        maxAgeMinutes: 15,
+        minLiquidity: 1000,
+        minVolume24h: 5000,
+        minBuyRatio: 0.55,
+        minMcap: 5000,
+        maxMcap: 500000,
+        minTxns1h: 10
+    };
+
+    // Phase 4: Graduation Potential Signals
+    const GRADUATION_SIGNALS = {
+        minVolume1h: 1000,
+        minBuys: 5,
+        minBuyRatio: 0.6,
+        maxAgeMinutes: 10
+    };
+
+    function classifyToken(source) {
+        if (source === 'pumpportal_ws') {
+            return { track: TRACKS.BONDING, priority: 3 }; // P3 (Bonding curve, check when idle)
+        }
+        if (source === 'manual') {
+            return { track: TRACKS.GRADUATED, priority: 0 }; // P0 (Manual, analyze immediately)
+        }
+        if (source.includes('boosted') || source.includes('new')) {
+            return { track: TRACKS.GRADUATED, priority: 0 }; // P0 (DexScreener hot launches)
+        }
+        return { track: TRACKS.GRADUATED, priority: 2 }; // P2 (General DEX listings)
+    }
 
     let ws = null;
 
@@ -110,6 +148,7 @@ const SniperEngine = (() => {
         discoveryQueue: [],          // v3.0: queue of pending tokens to analyze
         activeWorkers: [],           // v3.0: concurrency tracking statuses
         droppedCount: 0,             // v3.0: dropped low-priority tokens count
+        graduationWatchlist: new Map(), // Phase 4: Tracked bonding curve tokens
     };
 
     // ——— Utility ———
@@ -487,6 +526,175 @@ const SniperEngine = (() => {
     }
 
     // ======================================================================
+    // Phase 2: Detect if a listing is a Fresh Graduate
+    function isFreshGraduate(token) {
+        const platform = token.platformInfo?.platform || '';
+        if (platform !== 'pumpswap' && platform !== 'raydium') return false;
+        
+        const ageMin = token.ageMinutes || (token.ageMs ? token.ageMs / 60000 : 99999);
+        if (ageMin > FRESH_GRADUATE_CONFIG.maxAgeMinutes) return false;
+        if (token.liquidity < FRESH_GRADUATE_CONFIG.minLiquidity) return false;
+        if (token.volume24h < FRESH_GRADUATE_CONFIG.minVolume24h) return false;
+        if (token.marketCap < FRESH_GRADUATE_CONFIG.minMcap) return false;
+        if (token.marketCap > FRESH_GRADUATE_CONFIG.maxMcap) return false;
+
+        const txns1h = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
+        const totalTxns = (txns1h.buys || 0) + (txns1h.sells || 0);
+        if (totalTxns < FRESH_GRADUATE_CONFIG.minTxns1h) return false;
+
+        const buyRatio = totalTxns > 0 ? (txns1h.buys || 0) / totalTxns : 0;
+        if (buyRatio < FRESH_GRADUATE_CONFIG.minBuyRatio) return false;
+
+        return true;
+    }
+
+    // Phase 2: Compute Fresh Graduate Score (0-100)
+    function scoreFreshGraduate(token) {
+        const txns1h = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
+        const totalTxns = (txns1h.buys || 0) + (txns1h.sells || 0);
+        const buyRatio = totalTxns > 0 ? (txns1h.buys || 0) / totalTxns : 0;
+        const ageMin = token.ageMinutes || (token.ageMs ? token.ageMs / 60000 : 0);
+
+        let score = 0;
+
+        // Age: younger = better (0-15min window)
+        score += Math.max(0, 25 - ageMin) * 1.5; // 0-37.5 pts
+
+        // Volume intensity: vol/liquidity ratio
+        const volLiqRatio = token.liquidity > 0 ? token.volume24h / token.liquidity : 0;
+        score += Math.min(25, volLiqRatio * 5); // 0-25 pts
+
+        // Buy pressure
+        score += buyRatio * 25; // 0-25 pts
+
+        // Momentum: price change 5m
+        const momentum = Math.abs(token.priceChange5m || 0);
+        score += Math.min(15, momentum * 0.5); // 0-15 pts
+
+        // Mcap zone: sweet spot $10K-$200K
+        if (token.marketCap >= 10000 && token.marketCap <= 200000) {
+            score += 10;
+        } else if (token.marketCap > 200000 && token.marketCap <= 500000) {
+            score += 5;
+        }
+
+        return Math.round(score);
+    }
+
+    // Phase 3 Helpers for Optimized Scoring
+    function scoreMomentum(token) {
+        const change5m = token.priceChange5m || 0;
+        const change1h = token.priceChange1h || 0;
+        const ageMin = token.ageMinutes || (token.ageMs ? token.ageMs / 60000 : 0);
+        
+        let score = 0;
+        if (ageMin < 5) {
+            score += Math.min(25, Math.abs(change5m) * 0.3);
+        } else if (ageMin < 30) {
+            score += Math.min(20, Math.abs(change5m) * 0.2);
+            score += Math.min(10, Math.abs(change1h) * 0.05);
+        } else {
+            score += Math.min(15, Math.abs(change5m) * 0.15);
+        }
+        return Math.min(25, score);
+    }
+
+    function scoreBuySell(token) {
+        const txns = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
+        const total = txns.buys + txns.sells;
+        if (total === 0) return 0;
+        
+        const buyRatio = txns.buys / total;
+        if (buyRatio < 0.45) return 0;
+        if (buyRatio < 0.50) return 2;
+        if (buyRatio < 0.55) return 5;
+        if (buyRatio < 0.60) return 8;
+        if (buyRatio < 0.70) return 12;
+        if (buyRatio < 0.80) return 15;
+        return 10; 
+    }
+
+    function scoreMcapZone(token) {
+        const mcap = token.marketCap;
+        if (token.dexId === 'pumpswap' || token.dexId === 'raydium') {
+            if (mcap < 10000) return 2;
+            if (mcap < 50000) return 15;
+            if (mcap < 150000) return 12;
+            if (mcap < 500000) return 8;
+            if (mcap < 1000000) return 5;
+            return 2;
+        }
+        return 5;
+    }
+
+    // Phase 4: Graduation Watchlist Helpers
+    function hasGraduationPotential(token) {
+        if (token.dexId !== 'pumpfun' && token.platformInfo?.platform !== 'pump.fun') return false;
+        if (token.liquidity !== 0) return false;
+        
+        const txns = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
+        const total = txns.buys + txns.sells;
+        
+        if ((token.volume1h || 0) < GRADUATION_SIGNALS.minVolume1h) return false;
+        if ((txns.buys || 0) < GRADUATION_SIGNALS.minBuys) return false;
+        if (total > 0 && (txns.buys / total) < GRADUATION_SIGNALS.minBuyRatio) return false;
+        
+        const ageMin = token.ageMinutes || (token.ageMs ? token.ageMs / 60000 : 9999);
+        if (ageMin > GRADUATION_SIGNALS.maxAgeMinutes) return false;
+        
+        return true;
+    }
+
+    function trackForGraduation(token) {
+        if (!hasGraduationPotential(token)) return;
+        
+        const existing = state.graduationWatchlist.get(token.address);
+        if (!existing) {
+            state.graduationWatchlist.set(token.address, {
+                firstSeen: Date.now(),
+                address: token.address,
+                symbol: token.symbol,
+                signals: 1,
+                maxVolume: token.volume1h || 0,
+                maxBuys: token.txns1h?.buys || 0
+            });
+        } else {
+            existing.signals++;
+            existing.maxVolume = Math.max(existing.maxVolume, token.volume1h || 0);
+            existing.maxBuys = Math.max(existing.maxBuys, token.txns1h?.buys || 0);
+        }
+        
+        // Prune older listings (30 min max hold)
+        const nowMs = Date.now();
+        for (const [addr, data] of state.graduationWatchlist) {
+            if (nowMs - data.firstSeen > 30 * 60 * 1000) {
+                state.graduationWatchlist.delete(addr);
+            }
+        }
+    }
+
+    function detectGraduation(token) {
+        const watched = state.graduationWatchlist.get(token.address);
+        if (!watched) return null;
+        
+        const platform = token.platformInfo?.platform || '';
+        if (token.liquidity > 0 && (platform === 'pumpswap' || platform === 'raydium')) {
+            state.graduationWatchlist.delete(token.address);
+            return {
+                type: 'GRADUATION',
+                time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+                symbol: token.symbol,
+                address: token.address,
+                preGraduationSignals: watched.signals,
+                preGraduationMaxVolume: watched.maxVolume,
+                postGraduationMcap: token.marketCap,
+                postGraduationLiq: token.liquidity,
+                urgency: 'HIGH'
+            };
+        }
+        return null;
+    }
+
     //  SNIPER SCORE CALCULATOR — 10 signals, 100 points max
     // ======================================================================
 
@@ -563,18 +771,8 @@ const SniperEngine = (() => {
             scores.liquidity = 0;
         }
 
-        // 4. PRICE MOMENTUM (10 pts)
-        const m5 = tokenData.priceChange5m;
-        const h1 = tokenData.priceChange1h;
-        if (m5 > 5 && h1 > 20) {
-            scores.momentum = SCORE_WEIGHTS.PRICE_MOMENTUM;             // Strong uptrend
-        } else if (m5 > 0 && h1 > 0) {
-            scores.momentum = SCORE_WEIGHTS.PRICE_MOMENTUM * 0.6;      // Mild positive
-        } else if (m5 > -5 && h1 > -10) {
-            scores.momentum = SCORE_WEIGHTS.PRICE_MOMENTUM * 0.2;      // Consolidating
-        } else {
-            scores.momentum = 0;                                         // Dumping
-        }
+        // 4. PRICE MOMENTUM (25 pts max) — Phase 3D: Explosive momentum
+        scores.momentum = scoreMomentum(tokenData);
 
         // 5. HOLDER GROWTH (10 pts) — Proxy: recent transaction count
         const txns1h = tokenData.txns1h;
@@ -589,19 +787,8 @@ const SniperEngine = (() => {
             scores.holders = SCORE_WEIGHTS.HOLDER_GROWTH * 0.1;
         }
 
-        // 6. BUY/SELL RATIO (8 pts) — Strong buy pressure
-        const buys1h = txns1h.buys || 0;
-        const sells1h = txns1h.sells || 0;
-        const buySellRatio = sells1h > 0 ? buys1h / sells1h : (buys1h > 0 ? 5 : 0);
-        if (buySellRatio >= 3) {
-            scores.buySell = SCORE_WEIGHTS.BUY_SELL_RATIO;              // Heavy accumulation
-        } else if (buySellRatio >= 1.5) {
-            scores.buySell = SCORE_WEIGHTS.BUY_SELL_RATIO * 0.6;
-        } else if (buySellRatio >= 1) {
-            scores.buySell = SCORE_WEIGHTS.BUY_SELL_RATIO * 0.3;
-        } else {
-            scores.buySell = 0;                                          // More selling
-        }
+        // 6. BUY/SELL RATIO (15 pts max) — Phase 3B: Logistic step ratios
+        scores.buySell = scoreBuySell(tokenData);
 
         // v3.0: Sell pressure score modifier (in addition to hard filter)
         const sellPressureRatio = buys1h > 0 ? sells1h / buys1h : 999;
@@ -628,21 +815,8 @@ const SniperEngine = (() => {
             scores.smartMoney = 0;
         }
 
-        // 8. MARKET CAP ZONE (14 pts) — Data-driven: $50K-$100K = 38.9% multibagger rate
-        const mcap = tokenData.marketCap;
-        if (mcap >= 50000 && mcap <= 100000) {
-            scores.mcapZone = SCORE_WEIGHTS.MCAP_ZONE;                  // SWEET SPOT: highest multibagger rate
-        } else if (mcap >= 10000 && mcap < 50000) {
-            scores.mcapZone = SCORE_WEIGHTS.MCAP_ZONE * 0.75;           // Good early zone
-        } else if (mcap > 100000 && mcap <= 300000) {
-            scores.mcapZone = SCORE_WEIGHTS.MCAP_ZONE * 0.65;           // Extended zone
-        } else if (mcap >= 3000 && mcap < 10000) {
-            scores.mcapZone = SCORE_WEIGHTS.MCAP_ZONE * 0.4;            // Very early — risky
-        } else if (mcap > 300000 && mcap <= 1000000) {
-            scores.mcapZone = SCORE_WEIGHTS.MCAP_ZONE * 0.2;            // Late stage
-        } else {
-            scores.mcapZone = 0;
-        }
+        // 8. MARKET CAP ZONE (15 pts max) — Phase 3C: Smaller MCaps sweet spots
+        scores.mcapZone = scoreMcapZone(tokenData);
 
         // 9. DEXSCREENER BOOST (5 pts)
         scores.dexBoost = state.boostedTokens.has(tokenData.address)
@@ -738,7 +912,10 @@ const SniperEngine = (() => {
 
         // Filter: skip if too old
         if (tokenData.ageHours && tokenData.ageHours > SNIPER_CONFIG.MAX_AGE_HOURS) return null;
-        if (tokenData.liquidity < 500) {
+        
+        // Phase 1B: Kill $500 liquidity gate for bonding curves (liquidity=0)
+        const classification = classifyToken(source);
+        if (classification.track === TRACKS.GRADUATED && tokenData.liquidity < 500) {
             return rejectToken(tokenData, `LOW_LIQUIDITY: $${tokenData.liquidity.toFixed(0)} < $500`, source);
         }
 
@@ -792,11 +969,44 @@ const SniperEngine = (() => {
             return rejectToken(tokenData, `CONCENTRATED: Whale holds ${holderData.maxNonLpHolderPct.toFixed(1)}% (max 30%)`, source);
         }
 
+        // Phase 4: Graduation Watchlist Tracking
+        if (tokenData.liquidity === 0) {
+            trackForGraduation(tokenData);
+        }
+
+        // Phase 4: Detect graduation transitions
+        const gradAlert = detectGraduation(tokenData);
+        if (gradAlert) {
+            sniperLog(`🎓 GRADUATION DETECTED: ${gradAlert.symbol} graduated to DEX! MC: ${formatUsd(gradAlert.postGraduationMcap)}, Liq: ${formatUsd(gradAlert.postGraduationLiq)}`, 'alert');
+            state.sniperAlerts.unshift({
+                time: gradAlert.time,
+                token: tokenData,
+                score: 100,
+                grade: '🎓 GRADUATION',
+                isGraduation: true
+            });
+            if (state.sniperAlerts.length > 50) state.sniperAlerts.pop();
+            state.totalAlerts++;
+        }
+
         // Step 3: Check smart money matches
         const smartMoney = checkSmartMoney(tokenAddress);
 
-        // Step 4: Calculate sniper score
-        const score = calculateSniperScore(tokenData, holderData, smartMoney);
+        // Step 4: Calculate sniper score (Phase 2 Custom path or Standard)
+        let score;
+        if (isFreshGraduate(tokenData)) {
+            const freshScore = scoreFreshGraduate(tokenData);
+            score = {
+                total: freshScore,
+                scores: { freshGraduate: freshScore },
+                grade: freshScore >= 65 ? '🚀 FRESH' : freshScore >= 50 ? '🟡 FRESH_WATCH' : '⛔ REJECTED',
+                isSniper: freshScore >= 65,
+                isAlert: freshScore >= 65,
+                isFresh: true
+            };
+        } else {
+            score = calculateSniperScore(tokenData, holderData, smartMoney);
+        }
 
         const analysis = {
             ...tokenData,
@@ -872,29 +1082,25 @@ const SniperEngine = (() => {
             return;
         }
 
-        // 2. Calculate Priority (P0: pump.fun <2m, P1: pumpswap <15m, P2: raydium <30m, P3: others)
+        // 2. Classify Track and Priority
+        const classification = classifyToken(source);
+        const priority = classification.priority;
+        const track = classification.track;
+
         const ageMin = (Date.now() - createdAt) / 1000 / 60;
-        let priority = 3; // P3
-
-        let platform = source;
-        if (source === 'pumpportal_ws') platform = 'pump.fun';
-        else if (source.includes('boosted')) platform = 'dex_boosted';
-
-        if (platform === 'pump.fun' && ageMin < 2) priority = 0;
-        else if (platform === 'pumpswap' && ageMin < 15) priority = 1;
-        else if (source.includes('raydium') && ageMin < 30) priority = 2;
 
         const entry = {
             address,
             symbol,
             source,
-            platform,
             priority,
+            track,
             createdAt,
             queuedAt: Date.now()
         };
 
         // 3. Gatekeeper Pre-Filtering
+        const platform = entry.platform || '';
         if (platform === 'pumpswap' && ageMin > 120) {
             state.rejectedTokens.set(address, {
                 tokenData: entry,
@@ -1228,6 +1434,7 @@ const SniperEngine = (() => {
             discoveryQueue: [...state.discoveryQueue],
             activeWorkers: [...state.activeWorkers],
             droppedCount: state.droppedCount,
+            graduationWatchlist: [...state.graduationWatchlist.values()],
         };
     }
 

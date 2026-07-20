@@ -2058,7 +2058,12 @@
             }
 
             if (token.rejected) return { ok: false, reason: 'Token rejected' };
-            if (token.score.total < 65) return { ok: false, reason: `Score < 65` };
+            
+            // Allow trading if standard >= 55 OR fresh graduate >= 65
+            const isFresh = token.score?.isFresh;
+            const threshold = isFresh ? 65 : 55;
+            if (token.score.total < threshold) return { ok: false, reason: `Score < ${threshold}` };
+            
             if (socialCount === 0) return { ok: false, reason: 'SOCIAL CHECK REQUIRED' };
             return { ok: true };
         }
@@ -2086,8 +2091,16 @@
                 return 'hidden';
             }
 
-            if (token.score.total >= 65) return 'tradeable';
-            if (token.score.total >= 50) return 'watchlist';
+            // Fresh Graduate track
+            if (token.score?.isFresh) {
+                if (token.score.total >= 65) return 'fresh';
+                if (token.score.total >= 50) return 'watchlist';
+                return 'hidden';
+            }
+
+            // Standard track
+            if (token.score.total >= 55) return 'tradeable';
+            if (token.score.total >= 45) return 'watchlist';
             return 'hidden';
         }
 
@@ -2105,15 +2118,22 @@
             const tradeCheck = isTokenTradeable(token);
 
             // v3.0: Tier badge
-            const tierBadge = token.score.total >= 70 ? '🧱 A-TIER' : token.score.total >= 60 ? '🧲 B-TIER' : token.score.total >= 50 ? '🧳 C-TIER' : '';
+            let tierBadge = '';
+            if (token.score?.isFresh) {
+                tierBadge = `🚀 FRESH (${token.score.total})`;
+            } else {
+                tierBadge = token.score.total >= 70 ? '🧱 A-TIER' : token.score.total >= 60 ? '🧲 B-TIER' : token.score.total >= 50 ? '🧳 C-TIER' : '';
+            }
 
             // v3.0: Rejection banner or Safe badge
             let statusBanner = '';
-            if (isRejected || token.score.total < 50) {
-                statusBanner = `<div class="sniper-rejection-banner">⛔ REJECTED: ${token.rejectionReason || 'Score < 50'}</div>`;
-            } else if (token.safetyGate?.pass && token.score.total >= 60) {
+            if (isRejected || token.score.total < 45) {
+                statusBanner = `<div class="sniper-rejection-banner">⛔ REJECTED: ${token.rejectionReason || 'Score < 45'}</div>`;
+            } else if (token.score?.isFresh && token.score.total >= 65) {
+                statusBanner = `<div class="sniper-safe-badge" style="background: rgba(249, 115, 22, 0.12); color: #F97316; border-color: rgba(249, 115, 22, 0.3);">🚀 FRESH GRADUATE</div>`;
+            } else if (token.safetyGate?.pass && token.score.total >= 55) {
                 statusBanner = `<div class="sniper-safe-badge" style="background: rgba(20, 241, 149, 0.12); color: #14F195; border-color: rgba(20, 241, 149, 0.3);">🛡️ SAFE ${tierBadge}</div>`;
-            } else if (token.safetyGate?.pass && token.score.total >= 50 && token.score.total < 60) {
+            } else if (token.safetyGate?.pass && token.score.total >= 45 && token.score.total < 55) {
                 statusBanner = `<div class="sniper-safe-badge" style="background: rgba(255, 184, 0, 0.12); color: #FFB800; border-color: rgba(255, 184, 0, 0.3);">⚠️ PASSABLE ${tierBadge}</div>`;
             } else {
                 statusBanner = tierBadge ? `<div class="sniper-safe-badge">${tierBadge}</div>` : '';
@@ -2250,33 +2270,96 @@
                 sniperEls.btnStop.disabled = true;
             }
 
-            // v3.0: 3-Tab system — categorize tokens
+            // v3.0: 5-Tab system — Phase 2 & 4 Integration
             const allTokens = [...s.tokens];
-            const tradeableTokens = allTokens.filter(t => !t.rejected && t.score.total >= 65);
-            const watchlistTokens = allTokens.filter(t => !t.rejected && t.score.total >= 50 && t.score.total < 65);
-            const hiddenTokens = allTokens.filter(t => t.rejected || t.score.total < 50);
+            
+            // 1. Fresh graduates (isFresh && total >= 65)
+            const freshTokens = allTokens.filter(t => !t.rejected && t.score?.isFresh && t.score?.total >= 65);
+
+            // 2. Standard tradeable (total >= 55)
+            const tradeableTokens = allTokens.filter(t => {
+                if (t.rejected) return false;
+                if (t.score?.isFresh && t.score?.total >= 65) return false;
+                return t.score?.total >= 55;
+            });
+
+            // 3. Watchlist (45-54 standard, or 50-64 fresh)
+            const watchlistTokens = allTokens.filter(t => {
+                if (t.rejected) return false;
+                if (t.score?.isFresh) {
+                    return t.score?.total < 65 && t.score?.total >= 50;
+                }
+                return t.score?.total >= 45 && t.score?.total < 55;
+            });
+
+            // 4. Hidden (total < 45 or rejected)
+            const hiddenTokens = allTokens.filter(t => t.rejected || t.score?.total < 45);
+
+            // 5. Graduating watchlist
+            const graduatingTokens = s.graduationWatchlist || [];
 
             // Render tab bar
             const tabBar = document.getElementById('sniper-tab-bar');
             if (tabBar) {
                 tabBar.innerHTML = `
                     <button class="sniper-tab-btn tab-tradeable ${activeSniperTab === 'tradeable' ? 'active' : ''}" onclick="window.__setSniperTab('tradeable')">🟢 Tradeable <span class="sniper-tab-count">${tradeableTokens.length}</span></button>
+                    <button class="sniper-tab-btn tab-fresh ${activeSniperTab === 'fresh' ? 'active' : ''}" onclick="window.__setSniperTab('fresh')">🚀 Fresh <span class="sniper-tab-count">${freshTokens.length}</span></button>
                     <button class="sniper-tab-btn tab-watchlist ${activeSniperTab === 'watchlist' ? 'active' : ''}" onclick="window.__setSniperTab('watchlist')">🟡 Watchlist <span class="sniper-tab-count">${watchlistTokens.length}</span></button>
+                    <button class="sniper-tab-btn tab-graduating ${activeSniperTab === 'graduating' ? 'active' : ''}" onclick="window.__setSniperTab('graduating')">🎓 Graduating <span class="sniper-tab-count">${graduatingTokens.length}</span></button>
                     <button class="sniper-tab-btn tab-hidden ${activeSniperTab === 'hidden' ? 'active' : ''}" onclick="window.__setSniperTab('hidden')">⚫ Hidden <span class="sniper-tab-count">${hiddenTokens.length}</span></button>
                 `;
             }
 
             // Pick tokens for active tab
-            let displayTokens = activeSniperTab === 'tradeable' ? tradeableTokens :
-                                activeSniperTab === 'watchlist' ? watchlistTokens : hiddenTokens;
+            let displayTokens = [];
+            if (activeSniperTab === 'tradeable') displayTokens = tradeableTokens;
+            else if (activeSniperTab === 'fresh') displayTokens = freshTokens;
+            else if (activeSniperTab === 'watchlist') displayTokens = watchlistTokens;
+            else if (activeSniperTab === 'hidden') displayTokens = hiddenTokens;
 
             const sniperSortBy = document.getElementById('sniper-sort-by')?.value || 'score';
             if (sniperSortBy === 'age') {
                 displayTokens.sort((a, b) => (b.createdAt || b.analyzedAt || 0) - (a.createdAt || a.analyzedAt || 0));
             }
 
+            // Helper to render graduating watch cards
+            function renderGraduatingCard(item) {
+                return `
+                    <div class="sniper-card watchlist">
+                        <div class="sniper-rejection-banner" style="background: rgba(139, 92, 246, 0.12); color: #8B5CF6; border-color: rgba(139, 92, 246, 0.2); font-size: 0.65rem; padding: 4px; text-align: center; border-radius: 4px 4px 0 0;">🎓 GRADUATION POTENTIAL</div>
+                        <div class="sniper-card-header" style="cursor:pointer;" onclick="window.__openTokenDetail('${item.address}')">
+                            <div>
+                                <div class="sniper-token-name">${item.symbol} <span class="sniper-platform-tag" style="background:rgba(59,130,246,0.1);color:#3B82F6;border:1px solid rgba(59,130,246,0.2);">pump.fun</span></div>
+                                <div class="sniper-token-age">Mint: ${item.address.slice(0, 6)}...${item.address.slice(-4)}</div>
+                            </div>
+                            <div class="sniper-score-badge watchlist">${item.signals} Sig</div>
+                        </div>
+                        <div style="padding: 10px 14px; font-size: 0.72rem; color: var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+                            <div style="display:flex; justify-content:space-between;"><span>🔥 Volume 1h:</span><span style="color:var(--text-light); font-weight:bold;">$${item.maxVolume.toFixed(0)}</span></div>
+                            <div style="display:flex; justify-content:space-between;"><span>🛒 Total Buys:</span><span style="color:var(--text-light); font-weight:bold;">${item.maxBuys}</span></div>
+                            <div style="display:flex; justify-content:space-between;"><span>⏳ Trajectory:</span><span style="color:#FFB800; font-weight:bold;">Graduation watch</span></div>
+                        </div>
+                        <div style="padding: 10px 14px; border-top: 1px solid rgba(255,255,255,0.03); display:flex; justify-content:space-between; gap:8px;">
+                            <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="window.__openQuickChart('${item.address}')">📈 Chart</button>
+                            <button class="btn btn-sm btn-accent" style="flex:1;" onclick="window.__openTokenDetail('${item.address}')">🔍 Inspect</button>
+                        </div>
+                    </div>
+                `;
+            }
+
             // Render token cards
-            if (displayTokens.length > 0) {
+            if (activeSniperTab === 'graduating') {
+                if (graduatingTokens.length > 0) {
+                    sniperEls.grid.innerHTML = graduatingTokens.map(renderGraduatingCard).join('');
+                } else {
+                    sniperEls.grid.innerHTML = `
+                        <div class="sniper-placeholder" style="grid-column: 1 / -1; padding: 40px 20px;">
+                            <p style="font-weight: bold; margin-bottom: 4px;">No Graduating Tokens Yet</p>
+                            <p style="font-size: 0.72rem; opacity: 0.6; max-width: 340px; margin: 0 auto;">Scanning pump.fun bonding curves for graduation signals (volume growth, active buyers). Tokens will appear here before listing on Raydium.</p>
+                        </div>
+                    `;
+                }
+            } else if (displayTokens.length > 0) {
                 sniperEls.grid.innerHTML = displayTokens.slice(0, 30).map(renderSniperCard).join('');
             } else if (!s.isRunning) {
                 sniperEls.grid.innerHTML = `
