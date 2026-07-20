@@ -33,7 +33,7 @@ def format_usd(val):
 
 def run_analysis():
     print("=" * 60)
-    print(" 🚀 SOLANA ALPHA SCANNER — LOCAL DATABASE ANALYTICS ENGINE ")
+    print("  SOLANA ALPHA SCANNER - LOCAL DATABASE ANALYTICS ENGINE ")
     print("=" * 60)
 
     trades = load_json(TRADES_FILE)
@@ -41,7 +41,7 @@ def run_analysis():
     alerts = load_json(ALERTS_FILE)
 
     if not trades and not outcomes:
-        print("❌ No synced database files found in the 'data/' folder.")
+        print("[!] No synced database files found in the 'data/' folder.")
         print("   Please open the scanner dashboard, connect your workspace folder,")
         print("   and wait 30 seconds for the auto-sync to populate the local directory.")
         return
@@ -70,16 +70,16 @@ def run_analysis():
     avg_hold_win = (sum(get_hold_duration(t) for t in wins) / len(wins)) if wins else 0
     avg_hold_loss = (sum(get_hold_duration(t) for t in losses) / len(losses)) if losses else 0
 
-    print("\n[📊 Paper Trading Metrics]")
-    print(f"  • Total Executed:    {total_trades} (Open: {len(open_trades)} | Closed: {len(closed_trades)})")
-    print(f"  • Net Realized PnL:  {total_pnl:+.4f} SOL")
-    print(f"  • Win Rate:          {win_rate:.1f}% ({len(wins)} W | {len(losses)} L)")
-    print(f"  • Profit Factor:     {profit_factor:.2f}")
-    print(f"  • Avg Win Size:      {avg_win:+.4f} SOL (Avg Hold: {avg_hold_win:.1f}m)")
-    print(f"  • Avg Loss Size:     {avg_loss:+.4f} SOL (Avg Hold: {avg_hold_loss:.1f}m)")
+    print("\n[Paper Trading Metrics]")
+    print(f"  - Total Executed:    {total_trades} (Open: {len(open_trades)} | Closed: {len(closed_trades)})")
+    print(f"  - Net Realized PnL:  {total_pnl:+.4f} SOL")
+    print(f"  - Win Rate:          {win_rate:.1f}% ({len(wins)} W | {len(losses)} L)")
+    print(f"  - Profit Factor:     {profit_factor:.2f}")
+    print(f"  - Avg Win Size:      {avg_win:+.4f} SOL (Avg Hold: {avg_hold_win:.1f}m)")
+    print(f"  - Avg Loss Size:     {avg_loss:+.4f} SOL (Avg Hold: {avg_hold_loss:.1f}m)")
 
     # --- 2. OUTCOME MULTI-BAGGER METRICS ---
-    print("\n[🎯 Token Outcome Analytics]")
+    print("\n[Token Outcome Analytics]")
     
     total_outcomes = len(outcomes)
     multibagger_3x = 0
@@ -126,7 +126,9 @@ def run_analysis():
             multibagger_3x += 1
 
         # Classify by score
-        score = token.get('score', {}).get('total', 0)
+        score = token.get('discoveredScore')
+        if score is None:
+            score = token.get('score', {}).get('total', 0)
         bucket = None
         if score >= 90: bucket = '90+'
         elif score >= 80: bucket = '80-89'
@@ -139,14 +141,14 @@ def run_analysis():
             score_buckets[bucket]['peak_gains'].append(multiplier)
 
     rug_rate = (rugs / total_outcomes * 100) if total_outcomes else 0
-    print(f"  • Total Tracked Tokens: {total_outcomes}")
-    print(f"  • Rug/Abandon Rate:     {rug_rate:.1f}% ({rugs} tokens dumped >90% or zero liquidity)")
-    print(f"  • Multibagger Rate (>=3x): {(multibagger_3x/total_outcomes*100) if total_outcomes else 0:.1f}% ({multibagger_3x} tokens)")
-    print(f"  • Multibagger Rate (>=5x): {(multibagger_5x/total_outcomes*100) if total_outcomes else 0:.1f}% ({multibagger_5x} tokens)")
-    print(f"  • Multibagger Rate (>=10x): {(multibagger_10x/total_outcomes*100) if total_outcomes else 0:.1f}% ({multibagger_10x} tokens)")
+    print(f"  - Total Tracked Tokens: {total_outcomes}")
+    print(f"  - Rug/Abandon Rate:     {rug_rate:.1f}% ({rugs} tokens dumped >90% or zero liquidity)")
+    print(f"  - Multibagger Rate (>=3x): {(multibagger_3x/total_outcomes*100) if total_outcomes else 0:.1f}% ({multibagger_3x} tokens)")
+    print(f"  - Multibagger Rate (>=5x): {(multibagger_5x/total_outcomes*100) if total_outcomes else 0:.1f}% ({multibagger_5x} tokens)")
+    print(f"  - Multibagger Rate (>=10x): {(multibagger_10x/total_outcomes*100) if total_outcomes else 0:.1f}% ({multibagger_10x} tokens)")
 
     # --- 3. EVALUATE SNIPER SCORE CORRELATION ---
-    print("\n[🎯 Sniper Score vs. Multiplier Correlation]")
+    print("\n[Sniper Score vs. Multiplier Correlation]")
     print(f"  {'Score Range':<15} | {'Token Count':<12} | {'Avg Peak Multiplier':<20} | {'Multibagger % (>=3x)':<20}")
     print("  " + "-" * 75)
     
@@ -189,7 +191,7 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(REPORT_FILE, 'w', encoding='utf-8') as f:
             f.write(report_content)
-        print(f"\n📝 Detailed report generated at: {REPORT_FILE}")
+        print(f"\n[report] Detailed report generated at: {REPORT_FILE}")
     except Exception as e:
         print(f"Failed to write report: {e}")
 
