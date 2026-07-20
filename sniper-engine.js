@@ -632,13 +632,13 @@ const SniperEngine = (() => {
         const isGraduated = token.dexId === 'pumpswap' || token.dexId === 'raydium' || (token.platformInfo?.platform === 'pumpswap' || token.platformInfo?.platform === 'raydium');
         const hasMinLiq = token.liquidity >= 1000;
         const hasVolume = (token.volume1h || token.volume24h || 0) >= 5000;
-        const inMcapRange = token.marketCap >= 5000 && token.marketCap <= 500000;
+        const inMcapRange = token.marketCap >= 5000 && token.marketCap <= 5000000;
         
         const txns1h = token.txns1h || token.txns24h || { buys: 0, sells: 0 };
         const totalTxns = (txns1h.buys || 0) + (txns1h.sells || 0);
         const buyRatio = totalTxns > 0 ? (txns1h.buys || 0) / totalTxns : 0;
 
-        return isGraduated && ageMinutes < 15 && hasMinLiq && hasVolume && inMcapRange && buyRatio >= 0.55;
+        return isGraduated && ageMinutes < 120 && hasMinLiq && hasVolume && inMcapRange && buyRatio >= 0.55;
     }
 
     // Plan v2 Phase 2.2: Fast-Track Scoring for Fresh Graduates (0-100)
@@ -652,9 +652,10 @@ const SniperEngine = (() => {
         let score = 0;
 
         // Age: younger = higher score (decays fast)
-        if (ageMinutes < 5) score += 40;
-        else if (ageMinutes < 10) score += 30;
-        else if (ageMinutes < 15) score += 20;
+        if (ageMinutes < 10) score += 40;
+        else if (ageMinutes < 30) score += 30;
+        else if (ageMinutes < 60) score += 20;
+        else if (ageMinutes < 120) score += 10;
 
         // Buy pressure
         if (buyRatio >= 0.7) score += 25;
@@ -1039,22 +1040,34 @@ const SniperEngine = (() => {
         tokenData.safetyGate = safety;
         await sleep(100);
 
-        // v3.0: Step 1d — Sell Pressure Hard Filter
+        // v3.1: Step 1d — Sell Pressure Hard Filter (relaxed: only reject heavy dump)
         const buys1h = tokenData.txns1h?.buys || 0;
         const sells1h = tokenData.txns1h?.sells || 0;
         if (buys1h > 0) {
             const sellBuyRatio = sells1h / buys1h;
-            if (sellBuyRatio > 1.0) {
-                return rejectToken(tokenData, `DUMPING: More sells (${sells1h}) than buys (${buys1h})`, source);
+            // Only reject heavy sell pressure (>1.5x sells vs buys)
+            // Normal profit-taking (sells slightly > buys) is healthy
+            if (sellBuyRatio > 1.5) {
+                return rejectToken(tokenData, `DUMPING: Heavy sells (${sells1h}) vs buys (${buys1h}), ratio ${sellBuyRatio.toFixed(2)}`, source);
             }
         }
 
-        // v3.0: Step 1e — Liquidity/MCap Hard Filter
+        // v3.1: Graduated Liquidity/MCap filter
+        // During a pump, mcap rises faster than liquidity — so ratio drops.
+        // Only reject truly dangerously thin liquidity.
         if (tokenData.marketCap > 0) {
             const liqMcapRatio = tokenData.liquidity / tokenData.marketCap;
-            if (liqMcapRatio < 0.20) {
-                return rejectToken(tokenData, `THIN: Liq ${(liqMcapRatio * 100).toFixed(0)}% of MCap (need >20%)`, source);
+            const minLiq = tokenData.liquidity;
+            const hasMomentum = (tokenData.priceChange1h || 0) > 20;
+            // Hard reject: less than 5% ratio AND under $10K liquidity
+            if (liqMcapRatio < 0.05 && minLiq < 10000) {
+                return rejectToken(tokenData, `THIN: Liq ${(liqMcapRatio * 100).toFixed(1)}% of MCap, only $${minLiq.toFixed(0)} liq`, source);
             }
+            // Soft reject: less than 10% ratio, no momentum, under $20K liq
+            if (liqMcapRatio < 0.10 && !hasMomentum && minLiq < 20000) {
+                return rejectToken(tokenData, `THIN: Liq ${(liqMcapRatio * 100).toFixed(1)}% of MCap, no momentum`, source);
+            }
+            // Tokens with >$20K liq or momentum pass through regardless of ratio
         }
 
         // Step 2: Get holder distribution (async, may fail)
