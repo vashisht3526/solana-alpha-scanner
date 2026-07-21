@@ -1,7 +1,9 @@
-﻿node_modules/
-solana_scanner_backup_2026-07-18.json
+node_modules/
+solana_scanner_backup_*.json
+data/solana_scanner_backup_*.json
+data/data_db.json
 data_db.json
 *.log
 *.pdf
-
+docs/*.pdf
 github_token.txt

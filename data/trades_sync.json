@@ -1,0 +1,235 @@
+[
+  {
+    "id": "mrrko5w6666",
+    "walletAddress": "RADAR_RUNNER",
+    "tokenSymbol": "TIME",
+    "tokenAddress": "H8TgEwPXvF7kCi7surjf5FB7ik2BDrdgYmpoztN5pump",
+    "pairAddress": "6KZH4H8cSsnXLy7N4AzxAKPmKxyvrnuo7nT8k6Etd1oK",
+    "tokenUrl": "https://dexscreener.com/solana/6kzh4h8cssnxly7n4azxakpmkxyvrnuo7nt8k6etd1ok",
+    "entryPrice": 0.0000638943035004574,
+    "currentPrice": 0.00005366,
+    "entryPriceUsd": 0.00006327,
+    "currentPriceUsd": 0.00005366,
+    "tokenAmount": 78254.2374840068,
+    "positionSize": 5,
+    "stopLoss": 0.00004792072762534305,
+    "takeProfit": 0.0000958414552506861,
+    "entryTime": 1784452039638,
+    "slippage": 0.99,
+    "latency": 366,
+    "manipulationRisk": 20,
+    "liquidityUsd": 23266.65,
+    "volume24h": 3516.9,
+    "priceChange24h": 7.54,
+    "marketCap": 63273,
+    "pnlPct": -16.02,
+    "pnlSol": -0.8009,
+    "status": "closed",
+    "topHolders": [
+      {
+        "address": "cRiT2Sh3cmEBr1P2rHZqGWYRDkjfYLuj31Wdg9aiW7i",
+        "uiAmount": 732521509.428371,
+        "decimals": 6,
+        "amount": "732521509428371",
+        "uiAmountString": "732521509.428371"
+      },
+      {
+        "address": "DeuxvVTEjydF4TL4k8rywmXEfgw2V46BwSxXMcfGifzG",
+        "uiAmount": 198304040.883588,
+        "decimals": 6,
+        "amount": "198304040883588",
+        "uiAmountString": "198304040.883588"
+      },
+      {
+        "address": "5kbhjoaE1TPLAnCJU94H9xyJbLespNRAqbARznSgEtKV",
+        "uiAmount": 7340459.770314,
+        "decimals": 6,
+        "amount": "7340459770314",
+        "uiAmountString": "7340459.770314"
+      },
+      {
+        "address": "DRKCaUXHk5rjtvUc1UZ7mNL4y1MRCi2Eus996ks9gm4x",
+        "uiAmount": 6071778.698257,
+        "decimals": 6,
+        "amount": "6071778698257",
+        "uiAmountString": "6071778.698257"
+      },
+      {
+        "address": "CMBav42jfsiZrLiZPZTQuR5koYGT2NkF5hwZn8LUV6y6",
+        "uiAmount": 5564007.244318,
+        "decimals": 6,
+        "amount": "5564007244318",
+        "uiAmountString": "5564007.244318"
+      },
+      {
+        "address": "HxaV9uNxAsDfJ9W1p2yZxuEQ73ZXK55WT3DemKsFh785",
+        "uiAmount": 5219723.475379,
+        "decimals": 6,
+        "amount": "5219723475379",
+        "uiAmountString": "5219723.475379"
+      },
+      {
+        "address": "26zxnTGrFZC7T2NTJcJp8sHPsptfPapetRu4UK8sWM3v",
+        "uiAmount": 4937528.297134,
+        "decimals": 6,
+        "amount": "4937528297134",
+        "uiAmountString": "4937528.297134"
+      },
+      {
+        "address": "BcqENwFjsW7hguZt8PTEHJ18HJkpuPgoUGy7Xb8bQuk3",
+        "uiAmount": 4725360.24494,
+        "decimals": 6,
+        "amount": "4725360244940",
+        "uiAmountString": "4725360.24494"
+      },
+      {
+        "address": "EXmA5B7SgsLLfgUQNJUzKnZzt9qM2kgHFiEMyufHqrGp",
+        "uiAmount": 4478780.665364,
+        "decimals": 6,
+        "amount": "4478780665364",
+        "uiAmountString": "4478780.665364"
+      },
+      {
+        "address": "DtQWRYxnTff8dRM1zmU7drgHG6pM3tpzdiWJLJ6uwSfg",
+        "uiAmount": 2405488.865771,
+        "decimals": 6,
+        "amount": "2405488865771",
+        "uiAmountString": "2405488.865771"
+      }
+    ],
+    "_trackState": {
+      "highestPrice": 0.0000638943035004574,
+      "priceHistory": [
+        0.0000638943035004574,
+        0.00006327,
+        0.00006327,
+        0.00006327,
+        0.00005366
+      ],
+      "ladderTier": 0,
+      "totalSold": 0,
+      "breakevenLocked": false,
+      "trailingSL": 0.00004792072762534305
+    },
+    "savedAt": 1784557660108,
+    "exitPrice": 0.00005366,
+    "exitTime": 1784549139501,
+    "exitReason": "time_decay",
+    "finalPnl": -0.8009
+  },
+  {
+    "id": "mrt73r8t610",
+    "walletAddress": "RADAR_RUNNER",
+    "tokenSymbol": "LRC",
+    "tokenAddress": "BTLatVwvpJg979Pnp9dBnP21VJqFpxfUxZrvV7Zzpump",
+    "pairAddress": "7i28zQoh8dnbe9STzPaDLgtAqJmi8UzvoeingeNjXCh5",
+    "tokenUrl": "https://dexscreener.com/solana/7i28zqoh8dnbe9stzpadlgtaqjmi8uzvoeingenjxch5",
+    "entryPrice": 4.4119574017307934e-7,
+    "currentPrice": 1.836e-7,
+    "entryPriceUsd": 0.00003321,
+    "currentPriceUsd": 0.0000141,
+    "tokenAmount": 11242175.634003654,
+    "positionSize": 4.96,
+    "stopLoss": 3.3089680512980953e-7,
+    "takeProfit": 6.617936102596191e-7,
+    "entryTime": 1784550184877,
+    "slippage": 2.06,
+    "latency": 703,
+    "manipulationRisk": 21,
+    "liquidityUsd": 8747.88,
+    "volume24h": 56430.4,
+    "priceChange24h": 12.08,
+    "marketCap": 33218,
+    "pnlPct": -58.39,
+    "pnlSol": -2.8959,
+    "status": "closed",
+    "topHolders": [
+      {
+        "address": "J6wj9HvzgCG84kG5Hj2Q6t7a6Z8cUogxHbctiwZi6ZDP",
+        "uiAmount": 205340931.220602,
+        "decimals": 6,
+        "amount": "205340931220602",
+        "uiAmountString": "205340931.220602"
+      },
+      {
+        "address": "5JYAvj5FGdJMsb9TTZZgctxQpWGe2LXFAMM3rJ1WMZVR",
+        "uiAmount": 60297134.828248,
+        "decimals": 6,
+        "amount": "60297134828248",
+        "uiAmountString": "60297134.828248"
+      },
+      {
+        "address": "J3ofbYanPznvH1rDqed5PUxsVgaXDpVXWq5dFZK7KWgA",
+        "uiAmount": 23262882.992981,
+        "decimals": 6,
+        "amount": "23262882992981",
+        "uiAmountString": "23262882.992981"
+      },
+      {
+        "address": "2GQJiSH4eVeUcshtpLzRYzTceRj75eEy73Gxz89rjp9Q",
+        "uiAmount": 22453059.265372,
+        "decimals": 6,
+        "amount": "22453059265372",
+        "uiAmountString": "22453059.265372"
+      },
+      {
+        "address": "uWAF6t4fGbLtEjTAkf3vNhS5X28BmozhEJtU3hjD7Vb",
+        "uiAmount": 21610027.388503,
+        "decimals": 6,
+        "amount": "21610027388503",
+        "uiAmountString": "21610027.388503"
+      },
+      {
+        "address": "gNt3c3Z7eCYp3xumwqvzi7dLQuSar5p23yBf7rkC9bX",
+        "uiAmount": 18793602.714397,
+        "decimals": 6,
+        "amount": "18793602714397",
+        "uiAmountString": "18793602.714397"
+      },
+      {
+        "address": "4so72CxuU919svtJBiV8PxoJRBaUctmZVV9rjeMksFL3",
+        "uiAmount": 18004107.352099,
+        "decimals": 6,
+        "amount": "18004107352099",
+        "uiAmountString": "18004107.352099"
+      },
+      {
+        "address": "6NcKdwwbYTaguktFpLGiFiMGnbR7UmB4Fh8L8DeZrrRM",
+        "uiAmount": 14844588.078002,
+        "decimals": 6,
+        "amount": "14844588078002",
+        "uiAmountString": "14844588.078002"
+      },
+      {
+        "address": "GEL69EbdUH8owkpMsixw2BBaoThQX9e3tj7X3tFQH5p1",
+        "uiAmount": 14486864.963792,
+        "decimals": 6,
+        "amount": "14486864963792",
+        "uiAmountString": "14486864.963792"
+      },
+      {
+        "address": "7d3cPQXLL6Q7pUi7TJ8M3FehKW4DQuRPtG24KHTXxNmt",
+        "uiAmount": 13192888.480431,
+        "decimals": 6,
+        "amount": "13192888480431",
+        "uiAmountString": "13192888.480431"
+      }
+    ],
+    "_trackState": {
+      "highestPrice": 4.4119574017307934e-7,
+      "priceHistory": [
+        4.4119574017307934e-7,
+        1.836e-7
+      ],
+      "ladderTier": 0,
+      "totalSold": 0,
+      "breakevenLocked": false,
+      "trailingSL": 3.3089680512980953e-7
+    },
+    "exitPrice": 1.836e-7,
+    "exitTime": 1784550305421,
+    "exitReason": "stop_loss",
+    "finalPnl": -2.8959,
+    "savedAt": 1784557660108
+  }
+]
